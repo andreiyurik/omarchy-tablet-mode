@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
@@ -210,9 +211,107 @@ def apply_rotation(transform):
     else:
         scale = conf.get("scale") or hardware["scale"]
 
+    was_portrait = hardware["transform"] % 2 == 1
     write_conf(hardware, transform, scale)
     subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
+
+    # Only a quarter turn changes which axis is the long one; 0<->2 and 1<->3
+    # leave the split tree correctly oriented.
+    if (transform % 2 == 1) != was_portrait:
+        # `hyprctl reload` returns before the monitor has been reconfigured, so
+        # the windows still report their old boxes for a moment. Re-orienting
+        # from those would read the pre-rotation layout and flip the wrong
+        # splits, so wait for the transform to actually land.
+        for _ in range(50):
+            panel = detect_panel() or {}
+            if int(panel.get("transform", -1)) == transform:
+                break
+            time.sleep(0.02)
+        relayout()
     return 0
+
+
+def relayout():
+    """Re-orient dwindle splits after the panel's aspect ratio changed.
+
+    Hyprland recalculates window geometry on rotation, but it does not
+    re-orient the split tree: two windows tiled side by side on a wide screen
+    stay side by side on a tall one, as a pair of unreadably narrow columns.
+    There is no dispatcher that rebuilds the tree, so each wrongly-oriented
+    split is flipped with `togglesplit`.
+
+    Only the active workspace is handled. `togglesplit` acts on the focused
+    window, so reaching the others would mean cycling through every workspace
+    in front of the user; the ones left alone are re-oriented whenever they are
+    rotated while visible.
+    """
+    monitors = hyprctl("monitors") or []
+    active = next((m for m in monitors if m.get("focused")), None)
+    if not active:
+        return 0
+
+    scale = active.get("scale") or 1
+    width, height = active.get("width", 0), active.get("height", 0)
+    if int(active.get("transform", 0)) % 2 == 1:
+        width, height = height, width
+    portrait = height > width
+
+    workspace = (active.get("activeWorkspace") or {}).get("id")
+    clients = hyprctl("clients") or []
+    tiled = [
+        c for c in clients
+        if (c.get("workspace") or {}).get("id") == workspace
+        and c.get("mapped") and not c.get("floating")
+        and not c.get("fullscreen")
+    ]
+    if len(tiled) < 2:
+        return 0
+
+    focused = hyprctl("activewindow") or {}
+    focused_address = focused.get("address")
+
+    def box(client):
+        (x, y), (w, h) = client["at"], client["size"]
+        return x, y, w, h
+
+    # Two windows share a split when they have the same extent along one axis
+    # and touch along the other. The gap between them is the configured gaps,
+    # so "touching" is approximate.
+    def paired_along_x(a, b):
+        ax, ay, aw, ah = box(a)
+        bx, by, bw, bh = box(b)
+        return abs(ay - by) <= 8 and abs(ah - bh) <= 8 and ax < bx
+
+    def paired_along_y(a, b):
+        ax, ay, aw, ah = box(a)
+        bx, by, bw, bh = box(b)
+        return abs(ax - bx) <= 8 and abs(aw - bw) <= 8 and ay < by
+
+    # On a tall screen a side-by-side split is the wrong one, and the reverse
+    # on a wide screen.
+    wrong = paired_along_x if portrait else paired_along_y
+
+    handled = set()
+    flipped = 0
+    for a in tiled:
+        if a["address"] in handled:
+            continue
+        for b in tiled:
+            if b["address"] == a["address"] or b["address"] in handled:
+                continue
+            if not wrong(a, b):
+                continue
+            hyprctl("dispatch", 'hl.dsp.focus({ window = "address:%s" })' % a["address"],
+                    parse_json=False)
+            hyprctl("dispatch", 'hl.dsp.layout("togglesplit")', parse_json=False)
+            handled.update({a["address"], b["address"]})
+            flipped += 1
+            break
+
+    if focused_address:
+        hyprctl("dispatch", 'hl.dsp.focus({ window = "address:%s" })' % focused_address,
+                parse_json=False)
+    return flipped
 
 
 def resolve_position(name, current):
@@ -432,6 +531,7 @@ def main():
 
     sub.add_parser("status", help="report state as JSON")
     sub.add_parser("detect", help="print detected hardware")
+    sub.add_parser("relayout", help="re-orient dwindle splits for the current screen")
 
     setup_parser = sub.add_parser("setup", help="wire into hyprland.lua")
     setup_parser.add_argument("--remove", action="store_true")
@@ -456,6 +556,9 @@ def main():
         return cmd_lock(args.action)
     if args.command == "status":
         return cmd_status()
+    if args.command == "relayout":
+        print("flipped %d split(s)" % relayout())
+        return 0
     if args.command == "detect":
         print(json.dumps(detect(), indent=2))
         return 0
