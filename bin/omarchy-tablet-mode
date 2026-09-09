@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+
+"""Rotate a 2-in-1's panel from its accelerometer, with the touchscreen following.
+
+Everything hardware-specific is detected at runtime rather than configured:
+the internal panel, the digitizer and pen, the built-in keyboard and pointers,
+and whichever fold sensor the machine exposes. What cannot be detected -- how
+the accelerometer is mounted relative to the panel -- is a setting, because the
+only way to establish it is to turn the machine and look.
+
+Subcommands:
+  daemon    follow the accelerometer (the plugin's Service runs this)
+  rotate    set orientation by hand: normal|right|inverted|left|next
+  lock      freeze the current orientation: on|off|toggle
+  status    report state as JSON, for the bar widget
+  setup     wire the Hyprland fragment into hyprland.lua
+  detect    print detected hardware, for bug reports
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+STATE_DIR = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "omarchy/tablet-mode",
+)
+DEVICES_CONF = os.path.join(STATE_DIR, "devices.conf")
+LOCK_FILE = os.path.join(STATE_DIR, "locked")
+
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PLUGIN_ID = "andreiyurik.tablet-mode"
+HYPRLAND_LUA = os.path.expanduser("~/.config/hypr/hyprland.lua")
+MARKER_BEGIN = "-- BEGIN %s" % PLUGIN_ID
+MARKER_END = "-- END %s" % PLUGIN_ID
+
+# Fold sensors, in the order we trust them. thinkpad_acpi is world-readable,
+# which is why it is preferred: reading SW_TABLET_MODE from evdev would mean
+# putting the user in the input group, and that hands every process on the
+# session the ability to read all keystrokes.
+TABLET_SWITCHES = [
+    "/sys/devices/platform/thinkpad_acpi/hotkey_tablet_mode",
+    "/sys/devices/platform/asus-nb-wmi/tablet_mode",
+    "/sys/devices/platform/hp-wmi/tablet",
+]
+
+ORIENTATIONS = ["normal", "right-up", "bottom-up", "left-up"]
+
+# Accelerometer mounting relative to the panel. "standard" is what the majority
+# of machines report; the rest are the mountings we have actually seen.
+MAPPINGS = {
+    "standard": {"normal": 0, "right-up": 1, "bottom-up": 2, "left-up": 3},
+    "portrait-swapped": {"normal": 0, "right-up": 3, "bottom-up": 2, "left-up": 1},
+    "landscape-swapped": {"normal": 2, "right-up": 1, "bottom-up": 0, "left-up": 3},
+    "rotated-180": {"normal": 2, "right-up": 3, "bottom-up": 0, "left-up": 1},
+}
+
+
+def hyprctl(*args, parse_json=True):
+    cmd = ["hyprctl"]
+    if parse_json:
+        cmd.append("-j")
+    cmd.extend(args)
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return json.loads(out) if parse_json else out
+
+
+# ---------------------------------------------------------------- detection
+
+
+def detect_panel():
+    """The built-in panel: eDP/LVDS/DSI by connector name, else the only output."""
+    monitors = hyprctl("monitors") or []
+    for monitor in monitors:
+        if re.match(r"^(eDP|LVDS|DSI)", monitor.get("name", ""), re.I):
+            return monitor
+    return monitors[0] if len(monitors) == 1 else None
+
+
+def detect_touch_devices():
+    """Digitizer and pen -- everything whose input is bound to the screen area."""
+    devices = hyprctl("devices") or {}
+    names = [d.get("name") for d in devices.get("touch", [])]
+    names += [d.get("name") for d in devices.get("tablets", [])]
+    return [n for n in names if n]
+
+
+def detect_internal_devices():
+    """Built-in keyboard and pointers, which face the table once folded back.
+
+    Bluetooth and USB peripherals must not be caught here: someone typing on an
+    external keyboard with the machine folded into a stand still wants it.
+    """
+    devices = hyprctl("devices") or {}
+    names = []
+
+    for keyboard in devices.get("keyboards", []):
+        name = keyboard.get("name", "")
+        # The AT/PS2 controller is the built-in keyboard on every x86 laptop.
+        if "at-translated-set-2" in name or "at-set2" in name:
+            names.append(name)
+
+    for mouse in devices.get("mice", []):
+        name = mouse.get("name", "")
+        if re.search(r"(touchpad|trackpoint|synaptics|elan|syna\d|tpps)", name, re.I):
+            names.append(name)
+
+    return names
+
+
+def detect_tablet_switch():
+    for path in TABLET_SWITCHES:
+        if os.access(path, os.R_OK):
+            return path
+    return None
+
+
+def detect():
+    panel = detect_panel()
+    return {
+        "panel": panel.get("name") if panel else None,
+        "scale": panel.get("scale") if panel else None,
+        "transform": panel.get("transform", 0) if panel else 0,
+        "touch": detect_touch_devices(),
+        "internal": detect_internal_devices(),
+        "tablet_switch": detect_tablet_switch(),
+    }
+
+
+# -------------------------------------------------------------------- state
+
+
+def read_conf():
+    conf = {"touch": [], "internal": []}
+    try:
+        with open(DEVICES_CONF) as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key in ("touch", "internal"):
+                    conf[key].append(value)
+                else:
+                    conf[key] = value
+    except OSError:
+        pass
+    return conf
+
+
+def write_conf(hardware, transform, scale):
+    """The Hyprland fragment reads this: plain key=value, since Lua has no JSON."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    lines = [
+        "# Written by omarchy-tablet-mode. Edited by hand, it will be overwritten.",
+        "panel=%s" % (hardware.get("panel") or ""),
+        "scale=%s" % (scale if scale is not None else ""),
+        "transform=%d" % transform,
+        "tablet_switch=%s" % (hardware.get("tablet_switch") or ""),
+    ]
+    lines += ["touch=%s" % name for name in hardware.get("touch", [])]
+    lines += ["internal=%s" % name for name in hardware.get("internal", [])]
+
+    tmp = DEVICES_CONF + ".tmp"
+    with open(tmp, "w") as handle:
+        handle.write("\n".join(lines) + "\n")
+    os.replace(tmp, DEVICES_CONF)
+
+
+def locked():
+    return os.path.exists(LOCK_FILE)
+
+
+def folded():
+    switch = read_conf().get("tablet_switch") or detect_tablet_switch()
+    if not switch:
+        return None  # no fold sensor on this machine
+    try:
+        with open(switch) as handle:
+            return handle.read().strip() == "1"
+    except OSError:
+        return None
+
+
+# ----------------------------------------------------------------- rotation
+
+
+def apply_rotation(transform):
+    """Persist the orientation and reload Hyprland to pick it up.
+
+    A Lua config refuses `hyprctl keyword monitor` ("keyword can't work with
+    non-legacy parsers"), so the monitor can only be moved through the config.
+    """
+    hardware = detect()
+    if not hardware["panel"]:
+        print("omarchy-tablet-mode: no internal panel found", file=sys.stderr)
+        return 1
+
+    # Read the scale while unrotated: once our own rule is live, the value
+    # reported back is the one we set, not the one the user configured.
+    conf = read_conf()
+    if hardware["transform"] == 0:
+        scale = hardware["scale"]
+    else:
+        scale = conf.get("scale") or hardware["scale"]
+
+    write_conf(hardware, transform, scale)
+    subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
+    return 0
+
+
+def resolve_position(name, current):
+    positions = {"normal": 0, "right": 1, "inverted": 2, "left": 3}
+    if name in positions:
+        return positions[name]
+    if name == "next":
+        return (current + 1) % 4
+    if name == "prev":
+        return (current + 3) % 4
+    if name.isdigit() and 0 <= int(name) <= 3:
+        return int(name)
+    return None
+
+
+# ------------------------------------------------------------------- daemon
+
+
+def run_daemon(mapping_name, tablet_only):
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+
+    mapping = MAPPINGS.get(mapping_name, MAPPINGS["standard"])
+    bus_name = "net.hadess.SensorProxy"
+
+    def log(message):
+        print("omarchy-tablet-mode: %s" % message, file=sys.stderr, flush=True)
+
+    try:
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
+            bus_name, "/net/hadess/SensorProxy", bus_name, None,
+        )
+    except GLib.Error as error:
+        log("iio-sensor-proxy unavailable: %s" % error.message)
+        return 1
+
+    if not proxy.get_cached_property("HasAccelerometer"):
+        log("no accelerometer; manual rotation only")
+        return 1
+
+    # iio-sensor-proxy only polls the sensor while a client holds a claim.
+    proxy.call_sync("ClaimAccelerometer", None, Gio.DBusCallFlags.NONE, -1, None)
+
+    has_switch = detect_tablet_switch() is not None
+    if tablet_only and not has_switch:
+        log("no fold sensor on this machine; rotating in every position")
+
+    state = {"folded": None, "applied": None}
+
+    def should_follow():
+        if locked():
+            return False
+        if not tablet_only or not has_switch:
+            return True
+        return folded() is True
+
+    def apply_orientation():
+        if not should_follow():
+            return
+        value = proxy.get_cached_property("AccelerometerOrientation")
+        orientation = value.get_string() if value else None
+        transform = mapping.get(orientation)
+        if transform is not None and transform != state["applied"]:
+            apply_rotation(transform)
+            state["applied"] = transform
+
+    def on_properties_changed(_proxy, changed, _invalidated):
+        if "AccelerometerOrientation" in changed.keys():
+            apply_orientation()
+
+    proxy.connect("g-properties-changed", on_properties_changed)
+
+    def tick():
+        # The fold state drives whether the built-in keyboard is live, so a
+        # reload is needed on every transition even when nothing rotates.
+        if has_switch:
+            is_folded = folded()
+            if is_folded != state["folded"]:
+                if is_folded:
+                    log("folded: following the sensor, built-in input off")
+                else:
+                    log("unfolded: sensor ignored, built-in input on")
+                    apply_rotation(0)
+                    state["applied"] = 0
+                subprocess.run(["hyprctl", "reload"], check=False,
+                               stdout=subprocess.DEVNULL)
+                state["folded"] = is_folded
+        apply_orientation()
+        return GLib.SOURCE_CONTINUE
+
+    GLib.timeout_add(1000, tick)
+    loop = GLib.MainLoop()
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Never exit leaving the machine rotated with its keyboard switched off.
+        apply_rotation(0)
+        proxy.call_sync("ReleaseAccelerometer", None, Gio.DBusCallFlags.NONE, -1, None)
+    return 0
+
+
+# -------------------------------------------------------------------- setup
+
+
+def setup(remove=False):
+    """Add (or drop) the require of our Hyprland fragment in hyprland.lua.
+
+    The block is delimited by markers so it can be found and removed cleanly on
+    uninstall, and so a second run never duplicates it. It goes at the end of
+    the file: the fragment has to win over monitors.lua and over any plugin that
+    rewrites the monitor layout.
+    """
+    fragment = os.path.join(PLUGIN_DIR, "hypr", "rotation.lua")
+    block = "\n".join([
+        MARKER_BEGIN,
+        'dofile("%s")' % fragment,
+        MARKER_END,
+    ])
+
+    try:
+        with open(HYPRLAND_LUA) as handle:
+            text = handle.read()
+    except OSError as error:
+        print("omarchy-tablet-mode: cannot read %s: %s" % (HYPRLAND_LUA, error),
+              file=sys.stderr)
+        return 1
+
+    pattern = re.compile(
+        re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END) + r"\n?",
+        re.S,
+    )
+    stripped = pattern.sub("", text)
+
+    if remove:
+        updated = stripped
+    else:
+        updated = stripped.rstrip("\n") + "\n\n" + block + "\n"
+
+    if updated == text:
+        return 0
+
+    backup = HYPRLAND_LUA + ".tablet-mode-backup"
+    if not os.path.exists(backup):
+        with open(backup, "w") as handle:
+            handle.write(text)
+
+    tmp = HYPRLAND_LUA + ".tmp"
+    with open(tmp, "w") as handle:
+        handle.write(updated)
+    os.replace(tmp, HYPRLAND_LUA)
+
+    subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
+    return 0
+
+
+# --------------------------------------------------------------------- main
+
+
+def cmd_status():
+    hardware = detect()
+    is_folded = folded()
+    print(json.dumps({
+        "panel": hardware["panel"],
+        "transform": hardware["transform"],
+        "orientation": ORIENTATIONS[hardware["transform"] % 4],
+        "locked": locked(),
+        "folded": is_folded,
+        "hasFoldSensor": hardware["tablet_switch"] is not None,
+        "touch": hardware["touch"],
+        "internal": hardware["internal"],
+    }))
+    return 0
+
+
+def cmd_lock(action):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    if action == "toggle":
+        action = "off" if locked() else "on"
+    if action == "on":
+        open(LOCK_FILE, "w").close()
+    else:
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
+    print("locked" if locked() else "unlocked")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="omarchy-tablet-mode", description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    daemon = sub.add_parser("daemon", help="follow the accelerometer")
+    daemon.add_argument("--mapping", default="standard", choices=sorted(MAPPINGS))
+    daemon.add_argument("--all-positions", action="store_true",
+                        help="rotate in laptop mode too, not only when folded")
+
+    rotate = sub.add_parser("rotate", help="set orientation by hand")
+    rotate.add_argument("position")
+
+    lock = sub.add_parser("lock", help="freeze the current orientation")
+    lock.add_argument("action", nargs="?", default="toggle",
+                      choices=["on", "off", "toggle"])
+
+    sub.add_parser("status", help="report state as JSON")
+    sub.add_parser("detect", help="print detected hardware")
+
+    setup_parser = sub.add_parser("setup", help="wire into hyprland.lua")
+    setup_parser.add_argument("--remove", action="store_true")
+
+    args = parser.parse_args()
+
+    if args.command == "daemon":
+        return run_daemon(args.mapping, not args.all_positions)
+    if args.command == "rotate":
+        current = (detect_panel() or {}).get("transform", 0)
+        transform = resolve_position(args.position, current)
+        if transform is None:
+            print("omarchy-tablet-mode: unknown position %r" % args.position,
+                  file=sys.stderr)
+            return 2
+        return apply_rotation(transform)
+    if args.command == "lock":
+        return cmd_lock(args.action)
+    if args.command == "status":
+        return cmd_status()
+    if args.command == "detect":
+        print(json.dumps(detect(), indent=2))
+        return 0
+    if args.command == "setup":
+        return setup(remove=args.remove)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

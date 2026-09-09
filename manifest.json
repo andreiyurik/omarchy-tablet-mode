@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "andreiyurik.tablet-mode",
+  "name": "Tablet Mode",
+  "version": "1.0.0",
+  "author": "Andrei Yurik",
+  "license": "MIT",
+  "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and the bar gets a rotation lock",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "RotationLock.qml"
+  },
+  "barWidget": {
+    "displayName": "Rotation Lock",
+    "description": "Freezes the screen orientation, the way a tablet's rotation lock does. Click to lock, middle-click to rotate by hand.",
+    "category": "Hardware",
+    "defaultSection": "right",
+    "allowMultiple": false,
+    "defaults": {
+      "mapping": "standard",
+      "allPositions": false,
+      "hideInLaptopMode": false
+    },
+    "schema": [
+      {
+        "key": "mapping",
+        "type": "enum",
+        "label": "Which way the screen turns",
+        "options": [
+          "standard",
+          "portrait-swapped",
+          "landscape-swapped",
+          "rotated-180"
+        ],
+        "defaultValue": "standard",
+        "description": "How the accelerometer is mounted relative to the panel, which is the one thing here that cannot be detected: the sensor reports which way is up, but not how it was screwed in. Standard is what most machines report. If turning the machine rotates the screen the opposite way, try the entry naming the pair that is wrong -- portrait-swapped when only the two upright positions are mirrored, landscape-swapped when only the two flat ones are, rotated-180 when everything is upside down."
+      },
+      {
+        "key": "allPositions",
+        "type": "boolean",
+        "label": "Rotate in laptop mode too",
+        "defaultValue": false,
+        "description": "Off means the accelerometer is followed only once the lid is folded back past the keyboard, which is how a tablet behaves and why a laptop on your knees does not flip. On follows it always, which is the setting for a machine with no fold sensor -- there the daemon rotates in every position regardless."
+      },
+      {
+        "key": "hideInLaptopMode",
+        "type": "boolean",
+        "label": "Hide the icon in laptop mode",
+        "defaultValue": false,
+        "description": "The lock has nothing to do while the machine is open and the screen is not rotating, so this keeps it out of the bar until it does. It reappears the moment the machine is folded, or while a lock is being held."
+      }
+    ]
+  }
+}
