@@ -296,6 +296,11 @@ def run_daemon(mapping_name, tablet_only):
             if is_folded != state["folded"]:
                 if is_folded:
                     log("folded: following the sensor, built-in input off")
+                elif locked():
+                    # A held lock outlives unfolding: the user asked for this
+                    # orientation, and straightening the panel under them is
+                    # exactly what the lock exists to prevent.
+                    log("unfolded: sensor ignored, orientation held by the lock")
                 else:
                     log("unfolded: sensor ignored, built-in input on")
                     apply_rotation(0)
@@ -418,6 +423,8 @@ def main():
 
     rotate = sub.add_parser("rotate", help="set orientation by hand")
     rotate.add_argument("position")
+    rotate.add_argument("--no-lock", action="store_true",
+                        help="do not hold the orientation afterwards")
 
     lock = sub.add_parser("lock", help="freeze the current orientation")
     lock.add_argument("action", nargs="?", default="toggle",
@@ -440,6 +447,10 @@ def main():
             print("omarchy-tablet-mode: unknown position %r" % args.position,
                   file=sys.stderr)
             return 2
+        # Turning the screen by hand only sticks if the sensor stops arguing,
+        # so it takes the lock -- and rotating back to normal releases it.
+        if not args.no_lock:
+            cmd_lock("off" if transform == 0 else "on")
         return apply_rotation(transform)
     if args.command == "lock":
         return cmd_lock(args.action)
