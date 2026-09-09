@@ -115,6 +115,28 @@ def detect_internal_devices():
     return names
 
 
+def detect_model():
+    """The machine's name, as DMI reports it.
+
+    Worth having in `detect` output: the accelerometer mounting cannot be
+    probed, so the only way this ever gets easier for the next person is a
+    table of models that someone has actually turned by hand.
+    """
+    for path in ("/sys/class/dmi/id/product_version",
+                 "/sys/class/dmi/id/product_name"):
+        try:
+            with open(path) as handle:
+                value = handle.read().strip()
+        except OSError:
+            continue
+        # Vendors leave placeholders in one field and the real name in the
+        # other, so skip the obvious filler.
+        if value and value.lower() not in ("to be filled by o.e.m.", "default string",
+                                           "system product name", "none"):
+            return value
+    return None
+
+
 def detect_tablet_switch():
     for path in TABLET_SWITCHES:
         if os.access(path, os.R_OK):
@@ -125,6 +147,7 @@ def detect_tablet_switch():
 def detect():
     panel = detect_panel()
     return {
+        "model": detect_model(),
         "panel": panel.get("name") if panel else None,
         "scale": panel.get("scale") if panel else None,
         "transform": panel.get("transform", 0) if panel else 0,
