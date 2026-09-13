@@ -4,8 +4,8 @@ import qs.Ui
 
 // Rotation lock, the way a tablet has one.
 //
-// The rotation itself needs no button: the accelerometer handles it and
-// SUPER+ALT+O covers the rest. What a button is genuinely for is freezing the
+// The rotation itself needs no button: the accelerometer handles it and a
+// keybinding (see the README) covers the rest. What a button is genuinely for is freezing the
 // orientation -- reading in bed, the machine tips, and the screen should stay
 // where it is.
 BarWidget {
@@ -22,6 +22,7 @@ BarWidget {
   readonly property bool folded: service ? service.folded : false
   readonly property bool hasFoldSensor: service ? service.hasFoldSensor : true
   readonly property string orientation: service ? service.orientation : "normal"
+  readonly property bool sensorAvailable: service ? service.sensorAvailable : true
 
   // ----------------------------------------------------------------- settings
 
@@ -50,6 +51,8 @@ BarWidget {
   readonly property string tooltip: {
     if (locked)
       return "Rotation locked (" + orientation + ")"
+    if (!sensorAvailable)
+      return "No accelerometer: middle-click rotates by hand"
     if (hasFoldSensor && !allPositions && !folded)
       return "Auto-rotation waits for tablet mode"
     return "Following the accelerometer (" + orientation + ")"

@@ -22,7 +22,7 @@ omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
 ```
 
 The plugin adds a marked block to `~/.config/hypr/hyprland.lua` that loads its
-rotation fragment. The original file is backed up once, to
+Hyprland fragment. The original file is backed up once, to
 `hyprland.lua.tablet-mode-backup`.
 
 ## Settings
@@ -37,9 +37,9 @@ Right-click the bar widget to open its settings.
 
 ### If the screen rotates the wrong way
 
-This is the one thing the plugin cannot detect: the sensor reports which way is
-up, but not how it was screwed into the chassis. Turn the machine, see which
-positions come out mirrored, and pick the matching entry:
+The sensor reports which way is up, but not how it was screwed into the
+chassis. Turn the machine, see which positions come out mirrored, and pick the
+matching entry:
 
 | Symptom | Setting |
 |---|---|
@@ -47,23 +47,30 @@ positions come out mirrored, and pick the matching entry:
 | Only the two flat positions are mirrored | `landscape-swapped` |
 | Everything is upside down | `rotated-180` |
 
+That setting is a workaround. The lasting fix belongs in systemd: its
+[`60-sensor.hwdb`](https://github.com/systemd/systemd/blob/main/hwdb.d/60-sensor.hwdb)
+carries an `ACCEL_MOUNT_MATRIX` per model, and iio-sensor-proxy applies it for
+every desktop, not just this one. A machine that needs anything other than
+`standard` here is a machine missing from that file. `monitor-sensor`, which
+ships with iio-sensor-proxy, shows what the sensor reports while you try a
+matrix.
+
 ### Known machines
 
-| Machine | Setting | Fold sensor |
-|---|---|---|
-| ThinkPad X1 Yoga Gen 6 | `portrait-swapped` | `thinkpad_acpi` |
+| Machine | Setting | Fold sensor | In systemd's hwdb |
+|---|---|---|---|
+| ThinkPad X1 Yoga Gen 6 | `portrait-swapped` | `thinkpad_acpi` | no |
 
-Only one entry so far, and it is here because someone turned that machine by
-hand until the screen agreed. **If yours needs anything other than `standard`,
-please open an issue** with the output of:
+**If yours needs anything other than `standard`, please open an issue** with the
+output of:
 
 ```bash
-omarchy-tablet-mode detect
+~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode detect
 ```
 
 It prints the model as DMI reports it, along with the panel, digitizer and fold
-sensor that were found. With enough entries the mounting can be looked up by
-model instead of discovered by trial.
+sensor that were found. Each entry here is a draft for the hwdb, and once it is
+upstream the setting can go back to `standard`.
 
 ## The bar widget
 
@@ -87,39 +94,58 @@ o.bind(
 
 ## Command line
 
+The CLI lives inside the plugin and is not on your `PATH`:
+
 ```bash
-omarchy-tablet-mode rotate normal|right|inverted|left|next
-omarchy-tablet-mode lock on|off|toggle
-omarchy-tablet-mode status      # JSON, what the widget reads
-omarchy-tablet-mode relayout    # re-tile the active workspace for the current screen
-omarchy-tablet-mode detect      # what it found on your machine — include this in issues
+cli=~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode
+
+$cli rotate normal|right|inverted|left|next|prev
+$cli lock on|off|toggle
+$cli status      # JSON, what the widget reads
+$cli relayout    # re-tile two windows on the panel for the current orientation
+$cli detect      # what it found on your machine — include this in issues
 ```
 
 ## Limitations
 
-**Only the active workspace is re-tiled.** Hyprland recalculates window geometry
-when the screen turns, but leaves the dwindle split tree as it was: two windows
-tiled side by side on a wide screen stay side by side on a tall one, as a pair
-of narrow columns rather than two rows. The plugin flips those splits back with
-`togglesplit` — but that dispatcher acts on the focused window, so reaching
-other workspaces would mean cycling through every one of them in front of you.
-Workspaces you were not looking at are re-tiled the next time they are rotated
-while visible, or you can run `omarchy-tablet-mode relayout` on one yourself.
+**Only a workspace of exactly two tiled windows is re-tiled.** Hyprland
+recalculates window geometry when the screen turns, but leaves the dwindle
+split tree as it was: two windows side by side on a wide screen stay side by
+side on a tall one, as a pair of narrow columns. With two windows the fix is
+one certain `togglesplit`. With more, which windows share a split cannot be
+read reliably from where they sit, and a wrong guess makes things worse — so
+they are left for `SUPER + J` (Omarchy's toggle split) by hand. Only the
+workspace showing on the panel is touched, and only in the dwindle layout.
 
-**Rotation reloads the Hyprland config.** That is the only way to move a monitor
-on a Lua config (see below), and it is not free: layer surfaces are rebuilt, so
-the bar re-reserves its space a moment later than the windows are laid out.
+**A rotated panel's monitor rule replaces the one in `monitors.lua`.** Mode,
+position and scale are carried over, but anything else set on that output
+(such as VRR) is not, while the panel is turned.
 
 **A window that ignores resize requests stays the size it was.** Nothing here
 can help a hung application; it will sit at its old geometry until it responds.
 
 ## How it works, and why it works that way
 
-**Rotation goes through the config, not `hyprctl`.** On a Lua config Hyprland
-refuses `hyprctl keyword monitor` with *"keyword can't work with non-legacy
-parsers"*. So the orientation is written to
-`~/.local/state/omarchy/tablet-mode/devices.conf` and a Hyprland fragment reads
-it on reload.
+**Rotation is applied live with `hyprctl eval`.** On a Lua config Hyprland
+refuses `hyprctl keyword monitor`, but `eval` changes the running compositor
+directly — the same way Omarchy's own monitor scaling does — so turning the
+screen needs no config reload. The orientation is also recorded in
+`~/.local/state/omarchy/tablet-mode/devices.conf`, and the Hyprland fragment
+replays it whenever the config does reload.
+
+**The fold comes from Hyprland's switch events.** Hyprland receives
+`SW_TABLET_MODE` from libinput, which works on every vendor that reports it
+(`intel-vbtn`, `intel-hid`, `thinkpad_acpi`, `asus-nb-wmi`, `hp-wmi`, …) and
+needs no permissions. The fragment binds `switch:on` and `switch:off` for the
+device that has that switch, and the CLI switches input off or on at once. On
+ThinkPad, ASUS and HP machines the current state is also readable from sysfs,
+and there it wins: an event only says what changed.
+
+**Built-in devices are told apart by udev, not by name.** udev tags every input
+device `ID_INTEGRATION=internal` or `external`, which is what keeps a USB
+keyboard live in tent mode and a drawing tablet on the desk from turning with
+the panel. The power button and hotkeys are keys but not a keyboard, so they
+keep working while folded.
 
 **The touchscreen needs its own transform.** Binding a digitizer to an output
 maps its coordinates into that monitor's area but does *not* rotate its axes.
@@ -128,16 +154,27 @@ scrolls sideways.
 
 **Device settings are always written, including the neutral ones.** Hyprland
 does not reset `enabled` or `transform` when the config is reloaded — it keeps
-the last value. Omitting a rule therefore leaves a device disabled, or stuck in
-a stale orientation, forever after it has been set once.
+the last value. The one exception is a device Omarchy's own touchpad toggle has
+switched off: unfolding leaves it off.
 
-**The fold state is read from sysfs at config load**, not from a state file, so
-a reload while the machine sits open can never leave the keyboard dead. sysfs is
-also world-readable, which avoids putting the user in the `input` group — that
-would let every process on the session read all keystrokes.
+**The daemon reports; the widget does not poll.** It prints its state as a line
+of JSON whenever something changes, and reacts to the lock and to switch events
+through file notifications. A sysfs fold sensor, which raises no events, is the
+only thing read on a timer.
 
-Fold sensors are read from `thinkpad_acpi`, `asus-nb-wmi` or `hp-wmi`. On a
-machine with none, the plugin degrades to rotating in every position.
+**Disabled means inert.** A third-party plugin is enabled exactly when its id is
+in `shell.json`; the fragment checks that and does nothing otherwise. When the
+daemon is stopped because the plugin was disabled or removed, it turns the
+panel upright and gives the keyboard back first.
+
+## Development
+
+```bash
+tests/run
+```
+
+The suites work in a temporary `HOME` with `hyprctl` and `hl` stubbed out, so
+they never touch the running compositor or your config.
 
 ## Uninstall
 
@@ -145,7 +182,9 @@ machine with none, the plugin degrades to rotating in every position.
 omarchy plugin remove andreiyurik.tablet-mode
 ```
 
-Remove the Hyprland block first, while the plugin is still installed:
+That is enough on its own: the block in `hyprland.lua` checks that the plugin is
+still there before loading anything. To remove the block too, run this first,
+while the plugin is still installed:
 
 ```bash
 ~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode setup --remove

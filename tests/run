@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Run every test. Nothing here touches the live compositor or your config:
+# each suite works in a temporary HOME and stubs hyprctl and hl.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+export HYPRLAND_INSTANCE_SIGNATURE=test-session
+
+python3 -m unittest discover -s tests -p '*_test.py' "$@"
+
+lua=$(command -v lua5.4 || command -v lua || true)
+if [[ -n $lua ]]; then
+  "$lua" tests/fragment_test.lua
+else
+  echo "lua not found; skipping tests/fragment_test.lua" >&2
+fi
