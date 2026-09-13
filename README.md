@@ -1,30 +1,30 @@
 <p align="center">
-  <img src="assets/icon.svg" width="96" height="96" alt="">
+  <img src="assets/icon.svg" width="72" height="72" alt="">
 </p>
 
 <h1 align="center">Tablet Mode for Omarchy</h1>
 
 <p align="center">
   <b>Fold your 360° laptop into a tablet. Everything else follows.</b><br>
-  Automatic screen rotation, touch and pen that keep up, and a keyboard that
-  knows when to stay quiet — for <a href="https://omarchy.org/">Omarchy</a> and Hyprland.
+  Auto-rotation, touch and pen that keep up, a keyboard that goes quiet.
 </p>
 
 <p align="center">
   <a href="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml"><img src="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <img src="https://img.shields.io/badge/Omarchy-plugin-7aa2f7" alt="Omarchy plugin">
-  <img src="https://img.shields.io/badge/Hyprland-Wayland-58a6ff" alt="Hyprland on Wayland">
+  <img src="https://img.shields.io/badge/tested%20on-ThinkPad%20X1%20Yoga-58a6ff" alt="Tested on ThinkPad X1 Yoga">
   <img src="https://img.shields.io/github/license/andreiyurik/omarchy-tablet-mode?color=9ece6a" alt="MIT license">
 </p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" alt="As a laptop, the keyboard stays on and the screen stays still. Folded into a tent, the screen turns right side up and touch lands where you tap. As a tablet, the keyboard switches off and the pen and touch follow the screen.">
+  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and the pen follows the screen.">
 </picture>
 
 ## The problem
 
-Omarchy looks stunning on a convertible — right up until you fold it.
+[Omarchy](https://omarchy.org/) looks stunning on a convertible — right up
+until you fold it.
 
 - **The screen stays sideways**, however you hold it.
 - **Taps and pen strokes miss**, landing off to the side of your finger.
