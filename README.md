@@ -9,6 +9,59 @@ way a tablet does — so tilting the screen, or working with the laptop on your
 knees, never flips the display. While folded, the built-in keyboard and pointers
 are disabled: the keys face the table and otherwise press themselves against it.
 
+## Who this is for
+
+Anyone running Omarchy on a **convertible** — a laptop whose screen folds back
+360° into tent, stand or tablet position — who wants it to behave like a tablet
+when folded and like a laptop when open, without configuring anything.
+
+It is not for a regular clamshell laptop, which has nothing to rotate, and it
+does not turn a detachable's keyboard cover or a dual-screen laptop into
+anything; see [Laptops](#laptops).
+
+## Laptops
+
+What a machine needs is two things the kernel reports on its own: an
+**accelerometer** that iio-sensor-proxy can read, and a **tablet mode switch**
+(`SW_TABLET_MODE`) that fires when the screen folds back. Nearly every 360°
+convertible from the last several years has both.
+
+| Family | Fold sensor | Status |
+|---|---|---|
+| Lenovo ThinkPad X1 Yoga Gen 6 | `thinkpad_acpi` | **Tested** |
+| Other ThinkPad Yoga (X1 Yoga, X13 Yoga, L13 Yoga) | `thinkpad_acpi` | Expected to work |
+| Lenovo Yoga 2-in-1 | `lenovo-ymc` or `intel-vbtn` | Expected to work |
+| HP Spectre x360, Envy x360, EliteBook x360 | `hp-wmi` or `intel-vbtn` | Expected to work |
+| Dell XPS 13 2-in-1, Latitude and Inspiron 2-in-1 | `intel-vbtn` | Expected to work |
+| ASUS Zenbook Flip, Vivobook Flip | `asus-nb-wmi` | Expected to work |
+| Microsoft Surface and other detachables | varies, often needs the linux-surface kernel | Untested |
+| Dual-screen laptops (Yoga Book 9i and the like) | — | Not supported: one internal panel only |
+
+"Expected to work" means the machine reports what the plugin reads, not that
+anyone has tried it yet. On ThinkPad, ASUS and HP machines the fold is read from
+sysfs, which is the tested path; elsewhere it arrives through Hyprland's switch
+events, which are implemented but still waiting for a report from real
+hardware. Either way the accelerometer may be mounted differently on your model
+— see [If the screen rotates the wrong way](#if-the-screen-rotates-the-wrong-way).
+
+### Checking your machine in a minute
+
+```bash
+monitor-sensor --accel
+```
+
+Turn the machine on its side: a line saying the accelerometer orientation
+changed means the sensor works. Then, with the plugin installed:
+
+```bash
+~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode detect
+```
+
+`tablet_switch` or `tablet_sysfs` should name something, `touch` should list
+your touchscreen and pen, and `internal` only the built-in keyboard and
+pointers. If any of that is wrong, or your machine works and is not in the
+table, please open an issue with that output.
+
 ## Requirements
 
 - Omarchy with the Hyprland Lua config (`~/.config/hypr/hyprland.lua`)
@@ -77,6 +130,33 @@ upstream the setting can go back to `standard`.
 Click to lock the current orientation, the way a tablet's rotation lock works.
 Middle-click rotates by hand. The icon shows whether the sensor is being
 followed or the orientation is frozen.
+
+## The pen
+
+The plugin binds the built-in pen and touchscreen to the laptop's own panel and
+turns them with it. That alone fixes the most common complaint: left unbound,
+Hyprland spreads the pen across every monitor, so with an external display
+connected the cursor lands far from the tip.
+
+Everything else about the pen is a preference, and belongs in your
+`~/.config/hypr/input.lua` rather than in a plugin:
+
+- **Eraser button and pressure range** are the `input.tablettool` options
+  (`eraser_button_mode`, `eraser_button_override`, `pressure_range_min`,
+  `pressure_range_max`), described in the
+  [Hyprland wiki](https://wiki.hypr.land/Configuring/Basics/Variables/). They
+  apply to every tablet, not per device, which is why the plugin leaves them
+  alone. libinput offers no pressure curve.
+- **Taps and buttons reach only apps that speak the Wayland tablet protocol.**
+  Elsewhere the pen just moves the cursor, and Hyprland does not turn the
+  stylus buttons into mouse clicks. For writing and drawing, use apps built for
+  it: Xournal++ and Rnote (`sudo pacman -S xournalpp rnote`) or Krita.
+- **Remapping the stylus buttons** to keys takes
+  [input-remapper](https://github.com/sezanzeb/input-remapper), which runs as a
+  root service — something a plugin should not install for you.
+- **Touch dying after using the pen** is a known driver bug on some Wacom AES
+  machines ([input-wacom#310](https://github.com/linuxwacom/input-wacom/issues/310));
+  `sudo rmmod wacom && sudo modprobe wacom` brings it back until it is fixed.
 
 ## A keybinding, if you want one
 
