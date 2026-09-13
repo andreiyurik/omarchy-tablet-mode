@@ -1,8 +1,10 @@
-# Tablet Mode
+# Tablet Mode for Omarchy
 
-Makes tablet mode work on a 2-in-1 running [Omarchy](https://omarchy.org/).
-The screen follows the accelerometer, the touchscreen and pen follow the screen,
-and the bar gets a rotation lock.
+Makes tablet mode work on a 2-in-1 convertible laptop running
+[Omarchy](https://omarchy.org/) and Hyprland: automatic screen rotation from the
+accelerometer, a touchscreen and pen that follow the screen, and a rotation lock
+in the bar. Built for 360° laptops such as the ThinkPad X1 Yoga, HP Spectre x360
+and Dell XPS 13 2-in-1.
 
 By default it rotates only once the lid is folded back past the keyboard, the
 way a tablet does — so tilting the screen, or working with the laptop on your
