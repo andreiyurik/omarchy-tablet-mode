@@ -1,0 +1,67 @@
+name: Machine report
+description: Tell us how Tablet Mode behaves on your convertible, working or not.
+title: "Machine report: "
+labels: ["machine report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every report grows the table of laptops in the README, and a machine
+        that needs a non-standard setting is a draft for systemd's hwdb.
+        Reports that everything works are just as useful as bug reports.
+
+  - type: input
+    id: model
+    attributes:
+      label: Laptop model
+      placeholder: ThinkPad X1 Yoga Gen 6
+    validations:
+      required: true
+
+  - type: textarea
+    id: detect
+    attributes:
+      label: Output of `detect`
+      description: "`~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode detect`"
+      render: json
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mapping
+    attributes:
+      label: Which way the screen turns
+      description: The setting that makes the screen follow the machine.
+      options:
+        - standard
+        - portrait-swapped
+        - landscape-swapped
+        - rotated-180
+        - None of them is right
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      description: Tick everything you have tried and seen working.
+      options:
+        - label: Folding the screen back turns rotation on
+        - label: Opening it again puts the screen upright
+        - label: The built-in keyboard and touchpad are off while folded
+        - label: Touch and pen land under the finger after the screen turns
+        - label: Everything still works after suspending while folded
+
+  - type: input
+    id: versions
+    attributes:
+      label: Omarchy and kernel versions
+      description: "`omarchy version` and `uname -r`"
+      placeholder: 4.0.3-1, 7.2.3-arch1-3
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: What did not work, and what you tried.

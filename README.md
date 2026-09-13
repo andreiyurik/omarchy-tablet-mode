@@ -60,7 +60,9 @@ changed means the sensor works. Then, with the plugin installed:
 `tablet_switch` or `tablet_sysfs` should name something, `touch` should list
 your touchscreen and pen, and `internal` only the built-in keyboard and
 pointers. If any of that is wrong, or your machine works and is not in the
-table, please open an issue with that output.
+table, please file a
+[machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)
+— it asks for that output and a few ticks, and takes two minutes.
 
 ## Requirements
 
@@ -114,8 +116,9 @@ matrix.
 |---|---|---|---|
 | ThinkPad X1 Yoga Gen 6 | `portrait-swapped` | `thinkpad_acpi` | no |
 
-**If yours needs anything other than `standard`, please open an issue** with the
-output of:
+**If yours needs anything other than `standard`, please file a
+[machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)**
+with the output of:
 
 ```bash
 ~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode detect
