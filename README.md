@@ -30,7 +30,7 @@ convertible from the last several years has both.
 
 | Family | Fold sensor | Status |
 |---|---|---|
-| Lenovo ThinkPad X1 Yoga Gen 6 | `thinkpad_acpi` | **Tested** |
+| Lenovo ThinkPad X1 Yoga Gen 6 | `thinkpad_acpi` | **Tested**: rotation, fold, touch and pen, suspend while folded |
 | Other ThinkPad Yoga (X1 Yoga, X13 Yoga, L13 Yoga) | `thinkpad_acpi` | Expected to work |
 | Lenovo Yoga 2-in-1 | `lenovo-ymc` or `intel-vbtn` | Expected to work |
 | HP Spectre x360, Envy x360, EliteBook x360 | `hp-wmi` or `intel-vbtn` | Expected to work |
@@ -40,11 +40,12 @@ convertible from the last several years has both.
 | Dual-screen laptops (Yoga Book 9i and the like) | — | Not supported: one internal panel only |
 
 "Expected to work" means the machine reports what the plugin reads, not that
-anyone has tried it yet. On ThinkPad, ASUS and HP machines the fold is read from
-sysfs, which is the tested path; elsewhere it arrives through Hyprland's switch
-events, which are implemented but still waiting for a report from real
-hardware. Either way the accelerometer may be mounted differently on your model
-— see [If the screen rotates the wrong way](#if-the-screen-rotates-the-wrong-way).
+anyone has tried it yet. Both ways the fold can arrive have been seen working
+on the X1 Yoga: the sysfs state ThinkPad, ASUS and HP machines offer, and the
+Hyprland switch events every other vendor relies on. What is left to learn per
+model is whether its tablet mode switch is reported at all, and whether its
+accelerometer is mounted as it should be — see
+[If the screen rotates the wrong way](#if-the-screen-rotates-the-wrong-way).
 
 ### Checking your machine in a minute
 
