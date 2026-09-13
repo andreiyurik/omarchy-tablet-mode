@@ -152,6 +152,45 @@ class DetectionTest(CliTestCase):
                          ["at-translated-set-2-keyboard", "syna8008:00-06cb:ce58-touchpad"])
 
 
+class PanelTest(CliTestCase):
+    edp = {"name": "eDP-1", "width": 1920, "height": 1200, "refreshRate": 60.0,
+           "x": 0, "y": 0, "scale": 1.25, "transform": 0, "disabled": False}
+    hdmi = {"name": "HDMI-A-1", "width": 2560, "height": 1440, "refreshRate": 60.0,
+            "x": 0, "y": 0, "scale": 1, "transform": 0, "disabled": False}
+
+    def monitors(self, *monitors):
+        return mock.patch.object(self.cli, "hyprctl", return_value=list(monitors))
+
+    def test_an_external_monitor_is_never_taken_for_the_panel(self):
+        with self.monitors(self.hdmi):
+            self.assertIsNone(self.cli.detect_panel())
+
+    def test_a_panel_switched_off_is_still_found(self):
+        with self.monitors(self.hdmi, dict(self.edp, disabled=True)):
+            self.assertEqual(self.cli.detect_panel()["name"], "eDP-1")
+
+    def rotate_with(self, panel):
+        with self.monitors(self.hdmi, panel), mock.patch.object(self.cli, "log"), \
+                mock.patch.object(self.cli, "refresh_conf",
+                                  side_effect=lambda updates=None: (dict(updates or {}), False)), \
+                mock.patch.object(self.cli, "hypr_eval", return_value=True) as hypr_eval:
+            self.assertEqual(self.cli.apply_rotation(1), 0)
+        return hypr_eval
+
+    def test_a_panel_the_compositor_has_off_is_not_turned(self):
+        self.assertFalse(self.rotate_with(dict(self.edp, disabled=True)).called)
+
+    def test_a_panel_omarchy_holds_off_is_not_turned(self):
+        self.write(os.path.join(self.cli.OMARCHY_TOGGLES, "internal-monitor-clamshell.lua"),
+                   'hl.monitor({ output = "eDP-1", disabled = true })\n')
+        self.assertFalse(self.rotate_with(self.edp).called)
+
+    def test_an_enabled_panel_is_turned(self):
+        with mock.patch.object(self.cli, "relayout", return_value=0), \
+                mock.patch.object(self.cli.time, "sleep"):
+            self.assertTrue(self.rotate_with(self.edp).called)
+
+
 class InputTest(CliTestCase):
     def test_unfolding_leaves_omarchys_disabled_touchpad_alone(self):
         self.write(self.cli.OMARCHY_DISABLED_INPUT[0], "touchpad\n")

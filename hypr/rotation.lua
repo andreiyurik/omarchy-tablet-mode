@@ -63,10 +63,18 @@ if transform < 0 or transform > 7 then
   transform = 0
 end
 
+local omarchy_toggles = paths.home .. "/.local/state/omarchy/toggles/hypr/"
+
+-- Omarchy switches the panel off with a monitor rule of its own when the lid is
+-- shut with a display attached, or by hand. Those rules load before this
+-- fragment, and any rule here would switch the panel straight back on.
+local panel_off = read_file(omarchy_toggles .. "internal-monitor-clamshell.lua") ~= nil
+  or read_file(omarchy_toggles .. "internal-monitor-disable.lua") ~= nil
+
 -- A per-output rule replaces the wildcard rule in monitors.lua outright, so
 -- mode, position and scale are repeated as they were when the panel turned. At
 -- transform 0 no rule is emitted, handing the panel back to monitors.lua.
-if transform ~= 0 then
+if transform ~= 0 and not panel_off then
   hl.monitor({
     output = conf.panel,
     mode = conf.mode or "preferred",
@@ -106,7 +114,7 @@ end
 -- quietly undo them.
 local held_off = {}
 for _, kind in ipairs({ "touchpad", "touchscreen" }) do
-  local name = first_line(paths.home .. "/.local/state/omarchy/toggles/hypr/" .. kind .. "-disabled-name")
+  local name = first_line(omarchy_toggles .. kind .. "-disabled-name")
   if name and name ~= "" then
     held_off[name] = true
   end

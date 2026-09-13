@@ -47,12 +47,14 @@ HYPRLAND_LUA = os.path.join(CONFIG_HOME, "hypr/hyprland.lua")
 MARKER_BEGIN = "-- BEGIN %s" % PLUGIN_ID
 MARKER_END = "-- END %s" % PLUGIN_ID
 
-# Omarchy's own touchpad and touchscreen toggles. Hardcoded to ~/.local/state,
-# as omarchy-toggle-input-device writes there regardless of XDG_STATE_HOME.
+# Omarchy's toggles. Hardcoded to ~/.local/state, as its toggle tools write
+# there regardless of XDG_STATE_HOME.
+OMARCHY_TOGGLES = os.path.join(HOME, ".local/state/omarchy/toggles/hypr")
 OMARCHY_DISABLED_INPUT = [
-    os.path.join(HOME, ".local/state/omarchy/toggles/hypr/%s-disabled-name" % kind)
+    os.path.join(OMARCHY_TOGGLES, "%s-disabled-name" % kind)
     for kind in ("touchpad", "touchscreen")
 ]
+PANEL_OFF_TOGGLES = ("internal-monitor-clamshell", "internal-monitor-disable")
 
 # Fold sensors that report their current state in sysfs. The switch events
 # Hyprland delivers cover every machine with SW_TABLET_MODE, but an event only
@@ -201,12 +203,31 @@ def matches(name, names):
 
 
 def detect_panel():
-    """The built-in panel: eDP/LVDS/DSI by connector name, else the only output."""
-    monitors = hyprctl("monitors") or []
-    for monitor in monitors:
-        if re.match(r"^(eDP|LVDS|DSI)", monitor.get("name", ""), re.I):
+    """The built-in panel, enabled or not -- the match Omarchy's own
+    omarchy-hyprland-monitor-laptop makes.
+
+    Never any other output. With the lid shut and a display attached, Omarchy
+    switches the panel off, and an external monitor left as the only one would
+    otherwise be taken for it: bound to the touchscreen, and turned whenever
+    the laptop is moved.
+    """
+    for monitor in hyprctl("monitors", "all") or []:
+        if re.match(r"^(eDP|LVDS|DSI)-", monitor.get("name", "")):
             return monitor
-    return monitors[0] if len(monitors) == 1 else None
+    return None
+
+
+def panel_off(panel):
+    """Whether the panel is off, or held off by one of Omarchy's toggles.
+
+    Omarchy switches it off with a monitor rule of its own (lid shut with a
+    display attached, or by hand). Any rule we set for the panel -- live or on
+    reload -- would switch it straight back on.
+    """
+    return bool(panel.get("disabled")) or any(
+        os.path.exists(os.path.join(OMARCHY_TOGGLES, "%s.lua" % toggle))
+        for toggle in PANEL_OFF_TOGGLES
+    )
 
 
 def detect_touch_devices(devices, kernel):
@@ -429,6 +450,9 @@ def apply_rotation(transform):
     if not name:
         log("no internal panel found")
         return 1
+    if panel_off(panel):
+        log("internal panel is off; not turning it")
+        return 0
 
     # Mode, position and scale are carried over from the running monitor: a
     # per-output rule replaces the wildcard one outright, and "preferred" and
@@ -604,9 +628,10 @@ def run_daemon(mapping_name, tablet_only):
         else:
             target = 0  # open as a laptop: the screen stands upright
 
-        if target is not None:
-            current = int((detect_panel() or {}).get("transform", 0))
-            if target != current:
+        panel = detect_panel()
+        # A panel that is off stays off: no sensor reading is worth waking it.
+        if target is not None and panel and not panel_off(panel):
+            if target != int(panel.get("transform", 0)):
                 apply_rotation(target)
         emit()
         return GLib.SOURCE_REMOVE
