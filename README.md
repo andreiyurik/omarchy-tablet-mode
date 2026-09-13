@@ -86,15 +86,17 @@ Right-click the bar widget to open its settings.
 
 | Setting | What it does |
 |---|---|
-| **Which way the screen turns** | How the accelerometer is mounted relative to the panel |
+| **Which way the screen turns** | How the accelerometer is mounted relative to the panel. `auto` uses the mounting known for your model, and `standard` for any other |
 | **Rotate in laptop mode too** | Follow the sensor in every position, not only when folded |
 | **Hide the icon in laptop mode** | Keep the lock out of the bar until it has something to do |
 
 ### If the screen rotates the wrong way
 
 The sensor reports which way is up, but not how it was screwed into the
-chassis. Turn the machine, see which positions come out mirrored, and pick the
-matching entry:
+chassis. The default, `auto`, knows the mounting of every model in
+[Known machines](#known-machines) and assumes `standard` for the rest. If yours
+comes out wrong, turn the machine, see which positions come out mirrored, and
+pick the matching entry:
 
 | Symptom | Setting |
 |---|---|
@@ -125,8 +127,10 @@ with the output of:
 ```
 
 It prints the model as DMI reports it, along with the panel, digitizer and fold
-sensor that were found. Each entry here is a draft for the hwdb, and once it is
-upstream the setting can go back to `standard`.
+sensor that were found, and the mounting `auto` picks. A model reported here is
+added to `auto`, so the next person with it needs no setting at all. Each entry
+is also a draft for the hwdb; once a model is fixed upstream, it can leave the
+table.
 
 ## The bar widget
 
@@ -220,6 +224,18 @@ directly — the same way Omarchy's own monitor scaling does — so turning the
 screen needs no config reload. The orientation is also recorded in
 `~/.local/state/omarchy/tablet-mode/devices.conf`, and the Hyprland fragment
 replays it whenever the config does reload.
+
+**A reload cannot leave the screen straightened.** Another tool's monitor rules
+may load after the fragment — hyprmoncfg's do, by design — and undo the turn
+while the touchscreen stays turned. Rather than fight such tools for the last
+line of `hyprland.lua`, the daemon listens on Hyprland's event socket and, the
+moment a reload finishes, turns the panel back. You may see it straighten for
+a fraction of a second.
+
+**Settings are read from `shell.json`.** Omarchy stores a widget's settings on
+its entry there, and the daemon reads them from that entry and follows the file,
+so a change applies at once and does not depend on the widget and its service
+being loaded together.
 
 **The fold comes from Hyprland's switch events.** Hyprland receives
 `SW_TABLET_MODE` from libinput, which works on every vendor that reports it
