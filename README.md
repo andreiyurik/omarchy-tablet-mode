@@ -1,32 +1,88 @@
-# Tablet Mode for Omarchy
+<p align="center">
+  <img src="assets/icon.svg" width="96" height="96" alt="">
+</p>
 
-Makes tablet mode work on a 2-in-1 convertible laptop running
-[Omarchy](https://omarchy.org/) and Hyprland: automatic screen rotation from the
-accelerometer, a touchscreen and pen that follow the screen, and a rotation lock
-in the bar. Built for 360° laptops such as the ThinkPad X1 Yoga, HP Spectre x360
-and Dell XPS 13 2-in-1.
+<h1 align="center">Tablet Mode for Omarchy</h1>
 
-By default it rotates only once the lid is folded back past the keyboard, the
-way a tablet does — so tilting the screen, or working with the laptop on your
-knees, never flips the display. While folded, the built-in keyboard and pointers
-are disabled: the keys face the table and otherwise press themselves against it.
+<p align="center">
+  <b>Fold your 360° laptop into a tablet. Everything else follows.</b><br>
+  Automatic screen rotation, touch and pen that keep up, and a keyboard that
+  knows when to stay quiet — for <a href="https://omarchy.org/">Omarchy</a> and Hyprland.
+</p>
 
-## Who this is for
+<p align="center">
+  <a href="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml"><img src="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <img src="https://img.shields.io/badge/Omarchy-plugin-7aa2f7" alt="Omarchy plugin">
+  <img src="https://img.shields.io/badge/Hyprland-Wayland-58a6ff" alt="Hyprland on Wayland">
+  <img src="https://img.shields.io/github/license/andreiyurik/omarchy-tablet-mode?color=9ece6a" alt="MIT license">
+</p>
 
-Anyone running Omarchy on a **convertible** — a laptop whose screen folds back
-360° into tent, stand or tablet position — who wants it to behave like a tablet
-when folded and like a laptop when open, without configuring anything.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img src="assets/hero-light.svg" alt="As a laptop, the keyboard stays on and the screen stays still. Folded into a tent, the screen turns right side up and touch lands where you tap. As a tablet, the keyboard switches off and the pen and touch follow the screen.">
+</picture>
 
-It is not for a regular clamshell laptop, which has nothing to rotate, and it
-does not turn a detachable's keyboard cover or a dual-screen laptop into
-anything; see [Laptops](#laptops).
+## The problem
 
-## Laptops
+Omarchy looks stunning on a convertible — right up until you fold it.
 
-What a machine needs is two things the kernel reports on its own: an
-**accelerometer** that iio-sensor-proxy can read, and a **tablet mode switch**
-(`SW_TABLET_MODE`) that fires when the screen folds back. Nearly every 360°
-convertible from the last several years has both.
+- **The screen stays sideways**, however you hold it.
+- **Taps and pen strokes miss**, landing off to the side of your finger.
+- **The keyboard keeps typing.** Folded face down on the table, its keys press
+  themselves into whatever window is open.
+
+**Tablet Mode fixes all three, with nothing to configure.** Fold the laptop and
+it becomes a tablet. Open it and it is a laptop again.
+
+## Install
+
+```bash
+sudo pacman -S --needed iio-sensor-proxy
+omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
+```
+
+That's it — fold your laptop.
+
+The plugin adds a small marked block to `~/.config/hypr/hyprland.lua` to load
+its Hyprland fragment, and backs the original file up once, to
+`hyprland.lua.tablet-mode-backup`.
+
+## What you get
+
+| When you… | Without Tablet Mode | With Tablet Mode |
+|---|---|---|
+| Fold the screen back | Keys press against the table | Keyboard and touchpad switch off |
+| Hold it upright | The picture stays sideways | The screen turns with you |
+| Touch or draw | Taps land off to the side | Touch and pen follow the screen |
+| Work with it on your knees | — | Nothing flips until you fold it |
+| Read in bed | The screen spins as you shift | One click on the bar locks it |
+| Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
+
+## Why it feels native
+
+- **Zero setup.** It finds your panel, touchscreen, pen, built-in keyboard and
+  fold sensor on its own — and leaves your USB keyboard alone.
+- **Rotates like a tablet, not a phone.** Only once folded, so a laptop on your
+  knees never flips.
+- **Instant.** The screen turns live, without reloading your config.
+- **At home in Omarchy.** Your touchpad toggle, clamshell mode, external
+  monitors and hyprmoncfg keep working as before.
+- **Built for real life.** Suspend while folded, config reloads and a sensor
+  that hiccups are all handled — and tested on real hardware.
+- **Leaves no mess.** No sudo, no system services. Disable or remove it, and
+  your laptop is simply a laptop again.
+
+## Will it work on my laptop?
+
+If it folds back 360°, very likely. A machine needs two things the kernel
+reports on its own: an **accelerometer** that iio-sensor-proxy can read, and a
+**tablet mode switch** (`SW_TABLET_MODE`) that fires when the screen folds back.
+Nearly every convertible from the last several years has both. You also need
+Omarchy with its Hyprland Lua config (`~/.config/hypr/hyprland.lua`).
+
+A regular clamshell laptop has nothing to rotate, so this plugin is not for it.
+A machine without an accelerometer still gets the rotation lock and turning the
+screen by hand.
 
 | Family | Fold sensor | Status |
 |---|---|---|
@@ -66,22 +122,6 @@ pointers. If any of that is wrong, or your machine works and is not in the
 table, please file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)
 — it asks for that output and a few ticks, and takes two minutes.
-
-## Requirements
-
-- Omarchy with the Hyprland Lua config (`~/.config/hypr/hyprland.lua`)
-- `iio-sensor-proxy` — `sudo pacman -S --needed iio-sensor-proxy`
-- A machine with an accelerometer. Without one, manual rotation still works.
-
-## Install
-
-```bash
-omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
-```
-
-The plugin adds a marked block to `~/.config/hypr/hyprland.lua` that loads its
-Hyprland fragment. The original file is backed up once, to
-`hyprland.lua.tablet-mode-backup`.
 
 ## Settings
 
@@ -294,6 +334,9 @@ tests/run
 
 The suites work in a temporary `HOME` with `hyprctl` and `hl` stubbed out, so
 they never touch the running compositor or your config.
+
+The icon, the illustrations and `preview.png` are drawn by `assets/make-art`;
+change the words or colors there and run it again.
 
 ## Uninstall
 

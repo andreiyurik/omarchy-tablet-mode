@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+
+"""Draw the README artwork and the catalog preview.
+
+Writes assets/icon.svg, assets/hero-dark.svg, assets/hero-light.svg and
+preview.png (through rsvg-convert). Run it again after changing the words or
+the colors; the SVGs are plain text, so the diff shows what changed.
+"""
+
+import os
+import subprocess
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FONT = "Inter, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif"
+
+THEMES = {
+    "dark": {
+        "bg": "#0d1017", "card": "#151a23", "edge": "#252c38", "text": "#e8ecf2",
+        "muted": "#8a93a6", "line": "#c9d1dd", "fill": "#1e2531", "tint": "#253457",
+        "accent": "#7aa2f7", "good": "#9ece6a", "off": "#f7768e", "mark": "#0d1017",
+    },
+    "light": {
+        "bg": "#f5f7fb", "card": "#ffffff", "edge": "#e2e7ef", "text": "#1b2230",
+        "muted": "#5d6778", "line": "#3a4454", "fill": "#eef2f8", "tint": "#dbe5fb",
+        "accent": "#3b6fe0", "good": "#2f9e44", "off": "#d9485f", "mark": "#ffffff",
+    },
+}
+
+CARDS = [
+    ("laptop", "LAPTOP", [("good", "Keyboard and touchpad on"),
+                          ("good", "Screen stays still on your knees")]),
+    ("tent", "TENT", [("good", "Screen turns right side up"),
+                      ("good", "Touch lands where you tap")]),
+    ("tablet", "TABLET", [("off", "Keyboard off, keys face down"),
+                          ("good", "Pen and touch follow the screen")]),
+]
+
+
+def windows(c, x, y, w, h, stacked):
+    """A bar and two tiled windows, the second one focused."""
+    out = [f'<rect x="{x + 8}" y="{y + 8}" width="{w - 16}" height="7" rx="3.5" fill="{c["fill"]}"/>']
+    top, gap = y + 21, 6
+    if stacked:
+        each = (h - 29 - gap) / 2
+        boxes = [(x + 8, top, w - 16, each), (x + 8, top + each + gap, w - 16, each)]
+    else:
+        each = (w - 16 - gap) / 2
+        boxes = [(x + 8, top, each, h - 29), (x + 8 + each + gap, top, each, h - 29)]
+    for i, (bx, by, bw, bh) in enumerate(boxes):
+        fill = c["tint"] if i == 1 else c["fill"]
+        out.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="5" fill="{fill}"/>')
+    return out
+
+
+def screen(c, x, y, w, h, stacked=False):
+    return [f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="{c["card"]}" '
+            f'stroke="{c["line"]}" stroke-width="3"/>'] + windows(c, x, y, w, h, stacked)
+
+
+def profile(c, kind, x, y):
+    """The side view that names each position, drawn small in the corner."""
+    s = f'stroke="{c["muted"]}" stroke-width="3" stroke-linecap="round" fill="none"'
+    if kind == "laptop":
+        return [f'<path d="M{x} {y + 26} H{x + 40} M{x + 2} {y + 26} L{x - 4} {y}" {s}/>']
+    if kind == "tent":
+        return [f'<path d="M{x + 2} {y + 28} L{x + 20} {y} L{x + 38} {y + 28}" {s}/>']
+    return [f'<path d="M{x + 6} {y + 12} H{x + 42} M{x + 6} {y + 22} H{x + 42} '
+            f'M{x + 6} {y + 12} A5 5 0 0 0 {x + 6} {y + 22}" {s}/>']
+
+
+def bullet(c, tone, text, x, y):
+    color = c["good"] if tone == "good" else c["off"]
+    glyph = (f'M{x - 4} {y} l3 3 l6 -6' if tone == "good" else f'M{x - 4} {y} h8')
+    return [
+        f'<circle cx="{x}" cy="{y}" r="10" fill="{color}"/>',
+        f'<path d="{glyph}" stroke="{c["mark"]}" stroke-width="2.6" stroke-linecap="round" '
+        f'stroke-linejoin="round" fill="none"/>',
+        f'<text x="{x + 22}" y="{y + 6}" font-family="{FONT}" font-size="17" fill="{c["text"]}">{text}</text>',
+    ]
+
+
+def card(c, kind, label, lines, x, y, w, h):
+    cx, my = x + w / 2, y + 74
+    out = [
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="22" fill="{c["card"]}" stroke="{c["edge"]}"/>',
+        f'<text x="{x + 28}" y="{y + 46}" font-family="{FONT}" font-size="15" font-weight="700" '
+        f'letter-spacing="2.5" fill="{c["muted"]}">{label}</text>',
+    ]
+    out += profile(c, kind, x + w - 78, y + 24)
+
+    if kind == "laptop":
+        out += screen(c, cx - 105, my + 8, 210, 130)
+        out.append(f'<path d="M{cx - 105} {my + 146} H{cx + 105} L{cx + 128} {my + 172} H{cx - 128} Z" '
+                   f'fill="{c["fill"]}" stroke="{c["line"]}" stroke-width="3" stroke-linejoin="round"/>')
+        for row in range(2):
+            out.append(f'<path d="M{cx - 96 - row * 8} {my + 155 + row * 8} H{cx + 96 + row * 8}" '
+                       f'stroke="{c["muted"]}" stroke-width="3" stroke-dasharray="9 5" opacity="0.6"/>')
+    elif kind == "tent":
+        out += screen(c, cx - 105, my + 8, 210, 130)
+        out.append(f'<path d="M{cx - 150} {my + 168} H{cx + 150}" stroke="{c["edge"]}" stroke-width="3" '
+                   f'stroke-linecap="round"/>')
+        out.append(f'<path d="M{cx - 105} {my + 138} L{cx - 70} {my + 168} M{cx + 105} {my + 138} '
+                   f'L{cx + 70} {my + 168}" stroke="{c["line"]}" stroke-width="3" stroke-linecap="round"/>')
+        # A half turn, to say the picture came out the right way up.
+        out.append(f'<path d="M{cx + 122} {my + 30} A44 44 0 0 1 {cx + 122} {my + 116}" stroke="{c["accent"]}" '
+                   f'stroke-width="3.5" fill="none" stroke-linecap="round"/>')
+        out.append(f'<path d="M{cx + 112} {my + 106} L{cx + 122} {my + 117} L{cx + 134} {my + 108}" '
+                   f'stroke="{c["accent"]}" stroke-width="3.5" fill="none" stroke-linecap="round" '
+                   f'stroke-linejoin="round"/>')
+    else:
+        out += screen(c, cx - 62, my - 6, 124, 182, stacked=True)
+        # The rotation lock, shut, in the bar.
+        out.append(f'<rect x="{cx + 32}" y="{my + 4}" width="10" height="8" rx="2" fill="{c["accent"]}"/>')
+        out.append(f'<path d="M{cx + 34} {my + 5} v-2 a3 3 0 0 1 6 0 v2" stroke="{c["accent"]}" '
+                   f'stroke-width="1.8" fill="none"/>')
+        # The pen, its tip on the focused window.
+        out.append(f'<g transform="rotate(32 {cx + 38} {my + 138})">'
+                   f'<rect x="{cx + 33}" y="{my + 40}" width="11" height="92" rx="5.5" fill="{c["card"]}" '
+                   f'stroke="{c["line"]}" stroke-width="3"/>'
+                   f'<path d="M{cx + 33.5} {my + 128} L{cx + 38.5} {my + 142} L{cx + 43.5} {my + 128}" '
+                   f'fill="{c["line"]}"/></g>')
+        out.append(f'<circle cx="{cx + 30}" cy="{my + 140}" r="9" fill="{c["accent"]}" opacity="0.25"/>')
+
+    for i, (tone, text) in enumerate(lines):
+        out += bullet(c, tone, text, x + 38, y + h - 82 + i * 36)
+    return out
+
+
+def cards(c, top, height):
+    width, gap, left = 357, 24, 80
+    out = []
+    for i, (kind, label, lines) in enumerate(CARDS):
+        out += card(c, kind, label, lines, left + i * (width + gap), top, width, height)
+    return out
+
+
+def icon_shapes(x, y, size):
+    k = size / 128
+    return [
+        f'<g transform="translate({x} {y}) scale({k})">',
+        '<defs><linearGradient id="tm-g" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#8fb3ff"/><stop offset="1" stop-color="#5a7fe6"/></linearGradient></defs>',
+        '<rect width="128" height="128" rx="30" fill="url(#tm-g)"/>',
+        # A laptop folded flat into a tablet, with the turn it makes.
+        '<path d="M34 78 H96 M34 92 H96 M34 78 A7 7 0 0 0 34 92" stroke="#fff" stroke-width="8" '
+        'stroke-linecap="round" fill="none"/>',
+        '<path d="M40 56 A30 30 0 0 1 88 56" stroke="#fff" stroke-width="7" stroke-linecap="round" fill="none"/>',
+        '<path d="M78 50 L89 57 L94 45" stroke="#fff" stroke-width="7" stroke-linecap="round" '
+        'stroke-linejoin="round" fill="none"/>',
+        '</g>',
+    ]
+
+
+def svg(width, height, body, background=None):
+    bg = f'<rect width="{width}" height="{height}" fill="{background}"/>' if background else ""
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+            f'viewBox="0 0 {width} {height}">{bg}' + "".join(body) + "</svg>\n")
+
+
+def write(path, text):
+    with open(os.path.join(ROOT, path), "w") as handle:
+        handle.write(text)
+
+
+def main():
+    write("assets/icon.svg", svg(128, 128, icon_shapes(0, 0, 128)))
+
+    for name, c in THEMES.items():
+        write("assets/hero-%s.svg" % name, svg(1280, 440, cards(c, 30, 380)))
+
+    c = THEMES["dark"]
+    title = [
+        *icon_shapes(80, 58, 72),
+        f'<text x="176" y="112" font-family="{FONT}" font-size="54" font-weight="800" fill="{c["text"]}">'
+        f'Tablet Mode<tspan dx="16" font-weight="400" fill="{c["muted"]}">for Omarchy</tspan></text>',
+        f'<text x="80" y="176" font-family="{FONT}" font-size="25" fill="{c["muted"]}">'
+        'Fold your 360° laptop into a tablet. Everything else follows.</text>',
+    ]
+    preview = os.path.join(ROOT, "assets", ".preview.svg")
+    with open(preview, "w") as handle:
+        handle.write(svg(1280, 640, title + cards(c, 220, 380), background=c["bg"]))
+    subprocess.run(["rsvg-convert", "-w", "1280", "-h", "640", "-o",
+                    os.path.join(ROOT, "preview.png"), preview], check=True)
+    os.remove(preview)
+
+
+if __name__ == "__main__":
+    main()
