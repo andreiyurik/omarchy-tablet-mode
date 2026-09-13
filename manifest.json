@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "andreiyurik.tablet-mode",
   "name": "Tablet Mode",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
@@ -22,7 +22,7 @@
     "defaultSection": "right",
     "allowMultiple": false,
     "defaults": {
-      "mapping": "standard",
+      "mapping": "auto",
       "allPositions": false,
       "hideInLaptopMode": false
     },
@@ -32,13 +32,14 @@
         "type": "enum",
         "label": "Which way the screen turns",
         "options": [
+          "auto",
           "standard",
           "portrait-swapped",
           "landscape-swapped",
           "rotated-180"
         ],
-        "defaultValue": "standard",
-        "description": "How the accelerometer is mounted relative to the panel, which is the one thing here that cannot be detected: the sensor reports which way is up, but not how it was screwed in. Standard is what most machines report. If turning the machine rotates the screen the opposite way, try the entry naming the pair that is wrong -- portrait-swapped when only the two upright positions are mirrored, landscape-swapped when only the two flat ones are, rotated-180 when everything is upside down."
+        "defaultValue": "auto",
+        "description": "How the accelerometer is mounted relative to the panel, the one thing here that cannot be probed: the sensor reports which way is up, but not how it was screwed in. Auto uses the mounting already established for your model, and standard for any model not yet known. If turning the machine rotates the screen the wrong way, pick the entry naming the pair that is wrong -- portrait-swapped when only the two upright positions are mirrored, landscape-swapped when only the two flat ones are, rotated-180 when everything is upside down -- and please file a machine report so auto gets it right for the next person."
       },
       {
         "key": "allPositions",

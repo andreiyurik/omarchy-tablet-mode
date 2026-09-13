@@ -26,7 +26,7 @@ BarWidget {
 
   // ----------------------------------------------------------------- settings
 
-  readonly property string mapping: setting("mapping", "standard")
+  readonly property string mapping: setting("mapping", "auto")
   readonly property bool allPositions: setting("allPositions", false)
   readonly property bool hideInLaptopMode: setting("hideInLaptopMode", false)
 

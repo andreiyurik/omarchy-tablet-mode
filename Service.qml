@@ -21,7 +21,7 @@ Item {
   property string omarchyPath: ""
 
   // Pushed by the widget from its settings; see manifest.json for what they mean.
-  property string mapping: "standard"
+  property string mapping: "auto"
   property bool allPositions: false
 
   // Observed state. The daemon prints it as a JSON line whenever it changes.

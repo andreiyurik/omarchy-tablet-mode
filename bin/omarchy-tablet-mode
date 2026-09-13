@@ -80,6 +80,35 @@ MAPPINGS = {
     "rotated-180": {"normal": 2, "right-up": 3, "bottom-up": 0, "left-up": 1},
 }
 
+# Models someone has turned by hand and found needing a mounting other than
+# "standard", keyed by the DMI name `detect` prints. The "auto" setting looks
+# the machine up here, so a known model works the moment the plugin is enabled.
+# An entry can go once systemd's hwdb corrects the sensor for that model.
+KNOWN_MOUNTINGS = {
+    "ThinkPad X1 Yoga Gen 6": "portrait-swapped",
+}
+
+
+def resolve_mapping(name, model=None):
+    """The mounting to use: the named one, or for "auto" the known one."""
+    if name != "auto":
+        return name if name in MAPPINGS else "standard"
+    return KNOWN_MOUNTINGS.get(model or detect_model() or "", "standard")
+
+
+def desired_transform(mapping, tablet_only, is_locked, is_folded, orientation, recorded):
+    """Where the panel should stand, or None when there is nothing to go on.
+
+    The recorded transform is what was last applied on purpose. It is held
+    while locked, and whenever the sensor has no reading to offer -- which is
+    also what puts the panel back after a config reload has straightened it.
+    """
+    if is_locked:
+        return recorded
+    if not tablet_only or is_folded is not False:
+        return mapping.get(orientation, recorded)
+    return 0  # open as a laptop: the screen stands upright
+
 
 def log(message):
     print("omarchy-tablet-mode: %s" % message, file=sys.stderr, flush=True)
@@ -592,7 +621,9 @@ def run_daemon(mapping_name, tablet_only):
     gi.require_version("Gio", "2.0")
     from gi.repository import Gio, GLib
 
-    mapping = MAPPINGS.get(mapping_name, MAPPINGS["standard"])
+    mapping_name = resolve_mapping(mapping_name)
+    mapping = MAPPINGS[mapping_name]
+    log("accelerometer mounting: %s" % mapping_name)
     bus_name = "net.hadess.SensorProxy"
 
     conf, _ = refresh_conf()
@@ -618,15 +649,13 @@ def run_daemon(mapping_name, tablet_only):
                     else "unfolded: built-in input on")
             state["folded"] = is_folded
 
-        target = None
-        if locked():
-            pass  # the user asked for this orientation; hold it
-        elif not tablet_only or is_folded is not False:
-            proxy = state["proxy"]
-            value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
-            target = mapping.get(value.get_string()) if value else None
-        else:
-            target = 0  # open as a laptop: the screen stands upright
+        proxy = state["proxy"]
+        value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
+        target = desired_transform(
+            mapping, tablet_only, locked(), is_folded,
+            value.get_string() if value else None,
+            int(read_conf().get("transform") or 0),
+        )
 
         panel = detect_panel()
         # A panel that is off stays off: no sensor reading is worth waking it.
@@ -674,6 +703,39 @@ def run_daemon(mapping_name, tablet_only):
 
     Gio.bus_watch_name(Gio.BusType.SYSTEM, bus_name, Gio.BusNameWatcherFlags.AUTO_START,
                        on_sensor_appeared, on_sensor_vanished)
+
+    # A config reload rebuilds the monitor rules from the files, and a tool
+    # whose rules load after the fragment (hyprmoncfg does) straightens the
+    # panel while the touchscreen stays turned. Rather than race such tools
+    # for the last line of hyprland.lua, the daemon hears the reload and turns
+    # the panel back. The same goes for the panel coming back on.
+    def watch_hyprland():
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+        signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+        path = os.path.join(runtime, "hypr", signature, ".socket2.sock")
+        try:
+            connection = Gio.SocketClient.new().connect(Gio.UnixSocketAddress.new(path), None)
+        except GLib.Error as error:
+            log("cannot hear Hyprland's events, reloads will not be followed: %s"
+                % error.message)
+            return
+        stream = Gio.DataInputStream.new(connection.get_input_stream())
+
+        def on_line(source, result):
+            try:
+                line, _length = source.read_line_finish_utf8(result)
+            except GLib.Error:
+                line = None
+            if line is None:
+                return  # the compositor is gone, and the shell with it
+            if line.split(">>", 1)[0] in ("configreloaded", "monitoradded", "monitoraddedv2"):
+                schedule()
+            source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
+
+        state["events"] = connection  # keep the socket alive
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
+
+    watch_hyprland()
 
     # The lock and switch events are files; a monitor reacts to them at once.
     os.makedirs(STATE_DIR, exist_ok=True)
@@ -827,7 +889,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     daemon = sub.add_parser("daemon", help="follow the accelerometer")
-    daemon.add_argument("--mapping", default="standard", choices=sorted(MAPPINGS))
+    daemon.add_argument("--mapping", default="auto", choices=["auto"] + sorted(MAPPINGS))
     daemon.add_argument("--all-positions", action="store_true",
                         help="rotate in laptop mode too, not only when folded")
 
@@ -876,7 +938,10 @@ def main():
         print("flipped %d split(s)" % relayout())
         return 0
     if args.command == "detect":
-        print(json.dumps(detect(), indent=2))
+        hardware = detect()
+        # What "auto" picks here, so a report says whether the model is known.
+        hardware["mounting"] = resolve_mapping("auto", hardware["model"])
+        print(json.dumps(hardware, indent=2))
         return 0
     if args.command == "setup":
         return setup(remove=args.remove)

@@ -61,6 +61,51 @@ class PositionsTest(CliTestCase):
             self.assertEqual(sorted(mapping.values()), [0, 1, 2, 3], name)
 
 
+class MappingTest(CliTestCase):
+    def test_auto_uses_the_mounting_known_for_the_model(self):
+        self.assertEqual(self.cli.resolve_mapping("auto", "ThinkPad X1 Yoga Gen 6"),
+                         "portrait-swapped")
+
+    def test_auto_falls_back_to_standard_for_an_unknown_model(self):
+        self.assertEqual(self.cli.resolve_mapping("auto", "Some Convertible 13"), "standard")
+
+    def test_a_chosen_mounting_wins_over_the_known_one(self):
+        self.assertEqual(self.cli.resolve_mapping("rotated-180", "ThinkPad X1 Yoga Gen 6"),
+                         "rotated-180")
+
+    def test_every_known_mounting_exists(self):
+        for model, mounting in self.cli.KNOWN_MOUNTINGS.items():
+            self.assertIn(mounting, self.cli.MAPPINGS, model)
+
+
+class DesiredTransformTest(CliTestCase):
+    def desired(self, **kwargs):
+        args = {"mapping": self.cli.MAPPINGS["standard"], "tablet_only": True,
+                "is_locked": False, "is_folded": True, "orientation": "right-up",
+                "recorded": 0}
+        args.update(kwargs)
+        return self.cli.desired_transform(**args)
+
+    def test_folded_follows_the_sensor(self):
+        self.assertEqual(self.desired(), 1)
+
+    def test_open_stands_upright(self):
+        self.assertEqual(self.desired(is_folded=False, recorded=1), 0)
+
+    def test_open_follows_the_sensor_when_asked_to(self):
+        self.assertEqual(self.desired(is_folded=False, tablet_only=False), 1)
+
+    def test_a_lock_holds_what_was_recorded_even_after_a_reload_straightened_it(self):
+        self.assertEqual(self.desired(is_locked=True, recorded=3), 3)
+
+    def test_no_sensor_reading_holds_what_was_recorded(self):
+        self.assertEqual(self.desired(orientation=None, recorded=2), 2)
+        self.assertEqual(self.desired(orientation="undefined", recorded=2), 2)
+
+    def test_a_machine_without_fold_sensor_follows_the_sensor(self):
+        self.assertEqual(self.desired(is_folded=None), 1)
+
+
 class ConfTest(CliTestCase):
     def test_round_trip(self):
         conf = {"panel": "eDP-1", "mode": "1920x1200@60.026", "transform": 1,
