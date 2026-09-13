@@ -20,10 +20,6 @@ Item {
   property var barWidgetRegistry: null
   property string omarchyPath: ""
 
-  // Pushed by the widget from its settings; see manifest.json for what they mean.
-  property string mapping: "auto"
-  property bool allPositions: false
-
   // Observed state. The daemon prints it as a JSON line whenever it changes.
   property bool locked: false
   property int panelTransform: 0
@@ -64,17 +60,6 @@ Item {
     if (data.sensor !== undefined) root.sensorAvailable = data.sensor === true
   }
 
-  // Settings only reach the daemon through its arguments, so a change has to
-  // restart it. Nothing is lost: the daemon's state lives in files.
-  onMappingChanged: restartDaemon()
-  onAllPositionsChanged: restartDaemon()
-
-  function restartDaemon() {
-    // Before setup has finished the daemon is not up yet, and will start with
-    // the new arguments anyway.
-    if (daemonProc.running) daemonProc.running = false
-  }
-
   Component.onCompleted: {
     // Idempotent: it re-detects hardware, rewrites its own marked block in
     // hyprland.lua only when missing, and reloads only when something changed.
@@ -87,21 +72,19 @@ Item {
     onExited: daemonProc.running = true
   }
 
+  // The daemon reads the widget's settings from shell.json itself and follows
+  // changes to them, so nothing here has to pass them on or restart it.
   Process {
     id: daemonProc
-    command: {
-      var args = [root.cli, "daemon", "--mapping", root.mapping]
-      if (root.allPositions) args.push("--all-positions")
-      return args
-    }
+    command: [root.cli, "daemon"]
     stdout: SplitParser {
       onRead: function(line) { root.applyStatus(line) }
     }
     stderr: SplitParser {
       onRead: function(line) { console.info(line) }
     }
-    // A settings change or a crash: either way, come back. The pause keeps a
-    // daemon that fails at startup from spinning.
+    // After a crash, come back. The pause keeps a daemon that fails at startup
+    // from spinning.
     onExited: daemonRestart.restart()
   }
 

@@ -408,10 +408,37 @@ def refresh_conf(updates=None):
     return conf, write_conf(conf)
 
 
+def plugin_entry():
+    """This plugin's entry in shell.json, or None when the plugin is disabled.
+
+    A third-party plugin is enabled exactly when its entry is there, and the
+    entry carries the widget's settings inline. Reading them here means the
+    daemon never depends on the widget passing them along -- which breaks
+    whenever the shell reloads one without the other.
+    """
+    try:
+        with open(SHELL_JSON) as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+    def find(node):
+        if isinstance(node, dict):
+            if node.get("id") == PLUGIN_ID:
+                return node
+            node = list(node.values())
+        if isinstance(node, list):
+            for child in node:
+                found = find(child)
+                if found is not None:
+                    return found
+        return None
+
+    return find(data)
+
+
 def plugin_enabled():
-    # A third-party plugin is enabled exactly when its id appears in shell.json.
-    text = read_text(SHELL_JSON)
-    return bool(text) and ('"%s"' % PLUGIN_ID) in text
+    return plugin_entry() is not None
 
 
 def locked():
@@ -605,7 +632,7 @@ def status(conf=None):
 # ------------------------------------------------------------------- daemon
 
 
-def run_daemon(mapping_name, tablet_only):
+def run_daemon(mapping_override=None, all_positions=False):
     """Follow the accelerometer, the fold and the lock; print state as JSON lines.
 
     The Service reads stdout, so the widget changes the moment something
@@ -613,6 +640,10 @@ def run_daemon(mapping_name, tablet_only):
     without an accelerometer, or before iio-sensor-proxy has started: the fold
     and the lock still need handling, and the sensor is picked up when it
     appears on the bus.
+
+    Settings come from the plugin's entry in shell.json and are re-read when
+    that file changes, so changing one needs no restart. The arguments, for
+    running by hand, override them.
     """
     import signal
 
@@ -621,17 +652,14 @@ def run_daemon(mapping_name, tablet_only):
     gi.require_version("Gio", "2.0")
     from gi.repository import Gio, GLib
 
-    mapping_name = resolve_mapping(mapping_name)
-    mapping = MAPPINGS[mapping_name]
-    log("accelerometer mounting: %s" % mapping_name)
     bus_name = "net.hadess.SensorProxy"
 
     conf, _ = refresh_conf()
-    has_fold_sensor = bool(conf.get("tablet_sysfs") or conf.get("tablet_switch"))
-    if tablet_only and not has_fold_sensor:
+    if not (conf.get("tablet_sysfs") or conf.get("tablet_switch")):
         log("no fold sensor on this machine; rotating in every position")
 
-    state = {"proxy": None, "folded": "unknown", "pending": False}
+    state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
+             "mapping": None}
     loop = GLib.MainLoop()
 
     def emit():
@@ -649,10 +677,17 @@ def run_daemon(mapping_name, tablet_only):
                     else "unfolded: built-in input on")
             state["folded"] = is_folded
 
+        settings = plugin_entry() or {}
+        mapping_name = resolve_mapping(mapping_override or settings.get("mapping") or "auto")
+        if mapping_name != state["mapping"]:
+            log("accelerometer mounting: %s" % mapping_name)
+            state["mapping"] = mapping_name
+        tablet_only = not (all_positions or settings.get("allPositions") is True)
+
         proxy = state["proxy"]
         value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
         target = desired_transform(
-            mapping, tablet_only, locked(), is_folded,
+            MAPPINGS[mapping_name], tablet_only, locked(), is_folded,
             value.get_string() if value else None,
             int(read_conf().get("transform") or 0),
         )
@@ -688,14 +723,39 @@ def run_daemon(mapping_name, tablet_only):
         if not proxy.get_cached_property("HasAccelerometer"):
             log("no accelerometer; manual rotation only")
             return
-        # iio-sensor-proxy only polls the sensor while a client holds a claim.
-        proxy.call_sync("ClaimAccelerometer", None, Gio.DBusCallFlags.NONE, -1, None)
-        proxy.connect("g-properties-changed", on_properties_changed)
-        state["proxy"] = proxy
-        log("following the accelerometer")
-        schedule()
+        state["candidate"] = proxy
+        claim(proxy)
+
+    def claim(proxy):
+        """Claim the sensor, and keep trying if the claim fails.
+
+        iio-sensor-proxy only polls the sensor while a client holds a claim.
+        The call is asynchronous with a short timeout: a claim has been seen
+        to hang, and it must neither freeze the fold and lock handling nor
+        leave the daemon without a sensor for good.
+        """
+        if state["candidate"] is not proxy:
+            return GLib.SOURCE_REMOVE  # the sensor went away meanwhile
+
+        def done(source, result):
+            if state["candidate"] is not proxy:
+                return
+            try:
+                source.call_finish(result)
+            except GLib.Error as error:
+                log("could not claim the accelerometer, trying again: %s" % error.message)
+                GLib.timeout_add_seconds(5, claim, proxy)
+                return
+            proxy.connect("g-properties-changed", on_properties_changed)
+            state["proxy"] = proxy
+            log("following the accelerometer")
+            schedule()
+
+        proxy.call("ClaimAccelerometer", None, Gio.DBusCallFlags.NONE, 5000, None, done)
+        return GLib.SOURCE_REMOVE
 
     def on_sensor_vanished(_connection, _name):
+        state["candidate"] = None
         if state["proxy"] is not None:
             log("iio-sensor-proxy went away")
             state["proxy"] = None
@@ -746,6 +806,16 @@ def run_daemon(mapping_name, tablet_only):
             schedule()
 
     monitor.connect("changed", on_state_changed)
+
+    # The widget's settings are saved to shell.json; follow them from there.
+    config = Gio.File.new_for_path(os.path.dirname(SHELL_JSON)).monitor_directory(
+        Gio.FileMonitorFlags.NONE, None)
+
+    def on_config_changed(_monitor, changed, _other, _event):
+        if changed.get_path() == SHELL_JSON:
+            schedule()
+
+    config.connect("changed", on_config_changed)
 
     # sysfs raises no event of its own, so a fold sensor there is polled. It is
     # one small read; anything more expensive only happens on a change.
@@ -889,9 +959,10 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     daemon = sub.add_parser("daemon", help="follow the accelerometer")
-    daemon.add_argument("--mapping", default="auto", choices=["auto"] + sorted(MAPPINGS))
+    daemon.add_argument("--mapping", choices=["auto"] + sorted(MAPPINGS),
+                        help="override the setting in shell.json")
     daemon.add_argument("--all-positions", action="store_true",
-                        help="rotate in laptop mode too, not only when folded")
+                        help="rotate in laptop mode too, overriding the setting")
 
     rotate = sub.add_parser("rotate", help="set orientation by hand")
     rotate.add_argument("position")
@@ -915,7 +986,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "daemon":
-        return run_daemon(args.mapping, not args.all_positions)
+        return run_daemon(args.mapping, args.all_positions)
     if args.command == "rotate":
         current = int((detect_panel() or {}).get("transform", 0))
         transform = resolve_position(args.position, current)

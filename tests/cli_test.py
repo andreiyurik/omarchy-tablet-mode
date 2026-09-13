@@ -78,6 +78,23 @@ class MappingTest(CliTestCase):
             self.assertIn(mounting, self.cli.MAPPINGS, model)
 
 
+class SettingsTest(CliTestCase):
+    def test_settings_are_read_from_the_entry_in_the_bar_layout(self):
+        self.write(self.cli.SHELL_JSON, """{"bar": {"layout": {"right": [
+            {"id": "omarchy.tray"},
+            {"id": "andreiyurik.tablet-mode", "mapping": "rotated-180"}]}}}""")
+        self.assertEqual(self.cli.plugin_entry()["mapping"], "rotated-180")
+        self.assertTrue(self.cli.plugin_enabled())
+
+    def test_a_mention_elsewhere_does_not_count_as_enabled(self):
+        self.write(self.cli.SHELL_JSON, '{"note": "andreiyurik.tablet-mode", "plugins": []}')
+        self.assertFalse(self.cli.plugin_enabled())
+
+    def test_a_broken_shell_json_means_disabled(self):
+        self.write(self.cli.SHELL_JSON, "{not json")
+        self.assertIsNone(self.cli.plugin_entry())
+
+
 class DesiredTransformTest(CliTestCase):
     def desired(self, **kwargs):
         args = {"mapping": self.cli.MAPPINGS["standard"], "tablet_only": True,

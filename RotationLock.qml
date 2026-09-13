@@ -5,9 +5,9 @@ import qs.Ui
 // Rotation lock, the way a tablet has one.
 //
 // The rotation itself needs no button: the accelerometer handles it and a
-// keybinding (see the README) covers the rest. What a button is genuinely for is freezing the
-// orientation -- reading in bed, the machine tips, and the screen should stay
-// where it is.
+// keybinding (see the README) covers the rest. What a button is genuinely for
+// is freezing the orientation -- reading in bed, the machine tips, and the
+// screen should stay where it is.
 BarWidget {
   id: root
   moduleName: "andreiyurik.tablet-mode"
@@ -26,20 +26,10 @@ BarWidget {
 
   // ----------------------------------------------------------------- settings
 
-  readonly property string mapping: setting("mapping", "auto")
+  // The mounting and allPositions settings are read by the daemon straight
+  // from shell.json; the widget only needs what changes how it looks.
   readonly property bool allPositions: setting("allPositions", false)
   readonly property bool hideInLaptopMode: setting("hideInLaptopMode", false)
-
-  function pushSettings() {
-    if (!service) return
-    service.mapping = mapping
-    service.allPositions = allPositions
-  }
-
-  onMappingChanged: pushSettings()
-  onAllPositionsChanged: pushSettings()
-  onServiceChanged: pushSettings()
-  Component.onCompleted: pushSettings()
 
   // With a fold sensor and this setting on, the widget stays out of the bar
   // until the machine is actually folded, since nothing rotates before then.
