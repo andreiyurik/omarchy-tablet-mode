@@ -67,6 +67,18 @@ TABLET_SYSFS = [
 
 SW_TABLET_MODE = 1  # bit in the evdev switch capabilities, linux/input-event-codes.h
 
+# Switch devices some drivers register only when the switch first changes:
+# intel-hid on the first fold, and intel-vbtn where it cannot tell the machine
+# is a convertible. They are bound by name before they exist, or the fold that
+# creates them would go unheard -- on many machines, the only fold sensor there
+# is. A bind for a device that never appears does nothing.
+LAZY_TABLET_SWITCHES = ("Intel HID switches", "Intel Virtual Switches")
+
+# SMBIOS chassis types that fold or detach: a machine reporting one has a
+# tablet mode switch even before its driver has registered it.
+CHASSIS_TYPE = "/sys/class/dmi/id/chassis_type"
+FOLDING_CHASSIS = ("31", "32")  # Convertible, Detachable
+
 ORIENTATIONS = ["normal", "right-up", "bottom-up", "left-up"]
 
 # iio-sensor-proxy's orientation to a Hyprland transform, per accelerometer
@@ -292,16 +304,25 @@ def detect_internal_devices(devices, kernel):
     ]
 
 
-def detect_tablet_switch(devices, kernel):
-    """The input device that reports SW_TABLET_MODE, by the name Hyprland's
-    switch binds match on."""
+def detect_tablet_switches(devices, kernel):
+    """Every input device reporting SW_TABLET_MODE, by the name Hyprland's
+    switch binds match on -- the built-in ones, when udev can tell.
+
+    All of them, not one: a ThinkPad has two, one from thinkpad_acpi and one
+    intel-hid adds after the first fold, and which of them speaks is not
+    something to guess.
+    """
     known = {s.get("name") for s in devices.get("switches", [])}
     candidates = [
         d for d in kernel
         if d["switches"] & (1 << SW_TABLET_MODE) and d["name"] in known
     ]
-    candidates.sort(key=lambda d: d["props"].get("ID_INTEGRATION") != "internal")
-    return candidates[0]["name"] if candidates else None
+    internal = [d for d in candidates if d["props"].get("ID_INTEGRATION") == "internal"]
+    return [d["name"] for d in internal or candidates]
+
+
+def chassis_folds():
+    return read_text(CHASSIS_TYPE) in FOLDING_CHASSIS
 
 
 def detect_tablet_sysfs():
@@ -337,8 +358,9 @@ def detect():
         "panel": panel_name(detect_panel()),
         "touch": detect_touch_devices(devices, kernel),
         "internal": detect_internal_devices(devices, kernel),
-        "tablet_switch": detect_tablet_switch(devices, kernel),
+        "tablet_switch": detect_tablet_switches(devices, kernel),
         "tablet_sysfs": detect_tablet_sysfs(),
+        "chassis_folds": chassis_folds(),
     }
 
 
@@ -352,7 +374,7 @@ def panel_name(panel):
 # -------------------------------------------------------------------- state
 
 
-LIST_KEYS = ("touch", "internal")
+LIST_KEYS = ("touch", "internal", "tablet_switch")
 
 
 def read_conf():
@@ -379,8 +401,7 @@ def write_conf(conf):
     Returns whether anything changed, so callers can skip a pointless reload.
     """
     lines = ["# Written by omarchy-tablet-mode. Edited by hand, it will be overwritten."]
-    for key in ("cli", "panel", "mode", "position", "scale", "transform",
-                "tablet_switch", "tablet_sysfs"):
+    for key in ("cli", "panel", "mode", "position", "scale", "transform", "tablet_sysfs"):
         value = conf.get(key)
         if value is not None and value != "" and printable(str(value)):
             lines.append("%s=%s" % (key, value))
@@ -403,6 +424,7 @@ def refresh_conf(updates=None):
     conf = read_conf()
     conf.update(detect())
     conf.pop("model", None)
+    conf.pop("chassis_folds", None)
     conf["cli"] = CLI
     conf.update(updates or {})
     return conf, write_conf(conf)
@@ -445,6 +467,10 @@ def locked():
     return os.path.exists(LOCK_FILE)
 
 
+def has_fold_sensor(conf):
+    return bool(conf.get("tablet_sysfs") or conf.get("tablet_switch") or chassis_folds())
+
+
 def folded(conf=None):
     """True or False, or None on a machine with no fold sensor at all."""
     conf = conf or read_conf()
@@ -455,16 +481,16 @@ def folded(conf=None):
         if value is not None:
             return value == "1"
 
-    if not conf.get("tablet_switch"):
-        return None
-
     # The last switch event, tagged with the Hyprland instance that delivered
     # it: a file left over from before a logout says nothing about the lid now.
+    # Any switch counts, including one that did not exist at detection.
     parts = (read_text(FOLD_FILE) or "").split()
     signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
     if len(parts) == 2 and parts[0] == signature:
         return parts[1] == "1"
-    return False
+
+    # No event yet. A machine that folds starts out open.
+    return False if has_fold_sensor(conf) else None
 
 
 def omarchy_disabled_input():
@@ -625,7 +651,7 @@ def status(conf=None):
         "orientation": ORIENTATIONS[transform % 4],
         "locked": locked(),
         "folded": folded(conf),
-        "hasFoldSensor": bool(conf.get("tablet_sysfs") or conf.get("tablet_switch")),
+        "hasFoldSensor": has_fold_sensor(conf),
     }
 
 
@@ -655,7 +681,7 @@ def run_daemon(mapping_override=None, all_positions=False):
     bus_name = "net.hadess.SensorProxy"
 
     conf, _ = refresh_conf()
-    if not (conf.get("tablet_sysfs") or conf.get("tablet_switch")):
+    if not has_fold_sensor(conf):
         log("no fold sensor on this machine; rotating in every position")
 
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,

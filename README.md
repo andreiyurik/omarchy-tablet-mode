@@ -253,6 +253,13 @@ device that has that switch, and the CLI switches input off or on at once. On
 ThinkPad, ASUS and HP machines the current state is also readable from sysfs,
 and there it wins: an event only says what changed.
 
+Every tablet mode switch is bound, not just one — a ThinkPad has two. Some
+drivers, `intel-hid` among them, register their switch only on the first fold,
+so the plugin binds their names ahead of time and treats a machine whose
+firmware calls it a convertible as one with a fold sensor from the start.
+Otherwise the first fold after boot would go unheard, and on many Dell, HP and
+Lenovo machines that switch is the only fold sensor there is.
+
 **Built-in devices are told apart by udev, not by name.** udev tags every input
 device `ID_INTEGRATION=internal` or `external`, which is what keeps a USB
 keyboard live in tent mode and a drawing tablet on the desk from turning with

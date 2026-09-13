@@ -173,19 +173,37 @@ class FoldTest(CliTestCase):
         sysfs = os.path.join(self.home, "tablet_mode")
         self.write(sysfs, "0\n")
         self.write(self.cli.FOLD_FILE, "sig-now 1\n")
-        conf = {"tablet_sysfs": sysfs, "tablet_switch": "Switch"}
+        conf = {"tablet_sysfs": sysfs, "tablet_switch": ["Switch"]}
         self.assertIs(self.cli.folded(conf), False)
 
     def test_switch_event_from_this_session_counts(self):
         self.write(self.cli.FOLD_FILE, "sig-now 1\n")
-        self.assertIs(self.cli.folded({"tablet_switch": "Switch"}), True)
+        self.assertIs(self.cli.folded({"tablet_switch": ["Switch"]}), True)
 
     def test_switch_event_from_an_earlier_session_does_not(self):
         self.write(self.cli.FOLD_FILE, "sig-before 1\n")
-        self.assertIs(self.cli.folded({"tablet_switch": "Switch"}), False)
+        self.assertIs(self.cli.folded({"tablet_switch": ["Switch"]}), False)
 
     def test_no_sensor_at_all(self):
-        self.assertIsNone(self.cli.folded({"touch": [], "internal": []}))
+        with mock.patch.object(self.cli, "chassis_folds", return_value=False):
+            self.assertIsNone(self.cli.folded({"touch": [], "internal": [], "tablet_switch": []}))
+
+    def test_a_convertible_whose_switch_is_not_registered_yet_starts_open(self):
+        # intel-hid registers its switch device only on the first fold.
+        with mock.patch.object(self.cli, "chassis_folds", return_value=True):
+            self.assertIs(self.cli.folded({"tablet_switch": []}), False)
+
+    def test_an_event_from_a_switch_detection_never_saw_still_counts(self):
+        self.write(self.cli.FOLD_FILE, "sig-now 1\n")
+        with mock.patch.object(self.cli, "chassis_folds", return_value=False):
+            self.assertIs(self.cli.folded({"tablet_switch": []}), True)
+
+    def test_the_chassis_type_says_whether_a_machine_folds(self):
+        for chassis, folds in (("31", True), ("32", True), ("10", False)):
+            self.write(os.path.join(self.home, "chassis_type"), chassis + "\n")
+            with mock.patch.object(self.cli, "CHASSIS_TYPE",
+                                   os.path.join(self.home, "chassis_type")):
+                self.assertIs(self.cli.chassis_folds(), folds, chassis)
 
 
 class DetectionTest(CliTestCase):
@@ -196,6 +214,7 @@ class DetectionTest(CliTestCase):
         kernel_device("ThinkPad Extra Buttons", switches=0xa,
                       ID_INTEGRATION="internal", ID_INPUT_KEY="1", ID_INPUT_SWITCH="1"),
         kernel_device("Lid Switch", switches=0x1, ID_INTEGRATION="internal"),
+        kernel_device("Intel HID switches", switches=0x2, ID_INTEGRATION="internal"),
         kernel_device("SYNA8008:00 06CB:CE58 Touchpad",
                       ID_INTEGRATION="internal", ID_INPUT_TOUCHPAD="1"),
         kernel_device("Wacom HID 5276 Finger",
@@ -212,7 +231,8 @@ class DetectionTest(CliTestCase):
                  {"name": "logitech-mx-master-3-1"}],
         "touch": [{"name": "wacom-hid-5276-finger"}],
         "tablets": [{"name": "wacom-intuos-pro-m-pen"}, {"address": "0x1"}],
-        "switches": [{"name": "Lid Switch"}, {"name": "ThinkPad Extra Buttons"}],
+        "switches": [{"name": "Lid Switch"}, {"name": "ThinkPad Extra Buttons"},
+                     {"name": "Intel HID switches"}],
     }
 
     def test_internal_input_is_the_builtin_keyboard_and_pointers_only(self):
@@ -223,9 +243,9 @@ class DetectionTest(CliTestCase):
         self.assertEqual(self.cli.detect_touch_devices(self.devices, self.kernel),
                          ["wacom-hid-5276-finger"])
 
-    def test_tablet_switch_is_found_by_its_capability_not_its_name(self):
-        self.assertEqual(self.cli.detect_tablet_switch(self.devices, self.kernel),
-                         "ThinkPad Extra Buttons")
+    def test_every_tablet_switch_is_found_by_its_capability_not_its_name(self):
+        self.assertEqual(self.cli.detect_tablet_switches(self.devices, self.kernel),
+                         ["ThinkPad Extra Buttons", "Intel HID switches"])
 
     def test_without_udev_names_are_the_fallback(self):
         kernel = [dict(d, props={}) for d in self.kernel]

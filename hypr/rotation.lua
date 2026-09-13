@@ -34,7 +34,7 @@ if not shell_json or not shell_json:find('"' .. plugin_id .. '"', 1, true) then
   return
 end
 
-local conf = { touch = {}, internal = {} }
+local conf = { touch = {}, internal = {}, tablet_switch = {} }
 
 do
   local text = read_file(state_dir .. "/devices.conf")
@@ -102,7 +102,7 @@ local folded = false
 local sysfs_state = conf.tablet_sysfs and first_line(conf.tablet_sysfs)
 if sysfs_state then
   folded = sysfs_state == "1"
-elseif conf.tablet_switch then
+else
   local signature, value = (first_line(state_dir .. "/folded") or ""):match("^(%S+) ([01])$")
   folded = signature ~= nil
     and signature == os.getenv("HYPRLAND_INSTANCE_SIGNATURE")
@@ -132,8 +132,22 @@ end
 -- Hyprland receives SW_TABLET_MODE from libinput with no extra permissions, on
 -- every vendor that reports it. The binds hand each change to the CLI, which
 -- switches input at once and wakes the daemon to rotate.
-if conf.tablet_switch and conf.cli then
+--
+-- Every switch detected is bound, and so are the ones intel-hid and intel-vbtn
+-- only register when the switch first changes: bound ahead, the fold that
+-- creates them is heard too. Keep these names in step with the CLI.
+if conf.cli then
   local cli = "'" .. conf.cli:gsub("'", "'\\''") .. "'"
-  hl.bind("switch:on:" .. conf.tablet_switch, hl.dsp.exec_cmd(cli .. " fold on"), { locked = true })
-  hl.bind("switch:off:" .. conf.tablet_switch, hl.dsp.exec_cmd(cli .. " fold off"), { locked = true })
+  local bound = {}
+  local switches = { "Intel HID switches", "Intel Virtual Switches" }
+  for _, name in ipairs(conf.tablet_switch) do
+    table.insert(switches, name)
+  end
+  for _, name in ipairs(switches) do
+    if not bound[name] then
+      bound[name] = true
+      hl.bind("switch:on:" .. name, hl.dsp.exec_cmd(cli .. " fold on"), { locked = true })
+      hl.bind("switch:off:" .. name, hl.dsp.exec_cmd(cli .. " fold off"), { locked = true })
+    end
+  end
 end

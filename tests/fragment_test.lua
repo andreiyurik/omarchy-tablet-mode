@@ -139,6 +139,24 @@ test("a switch event from an earlier session is ignored", function()
   assert(find("device", function(c) return c[2].name == "keyboard" and c[2].enabled == true end))
 end)
 
+test("every detected switch and the lazily registered Intel ones are bound", function()
+  enable()
+  write(state_dir .. "/devices.conf", base_conf .. "tablet_switch=Another Switch\n")
+  load()
+  for _, name in ipairs({ "ThinkPad Extra Buttons", "Another Switch",
+                          "Intel HID switches", "Intel Virtual Switches" }) do
+    assert(find("bind", function(c) return c[2] == "switch:on:" .. name end), "no bind for " .. name)
+  end
+end)
+
+test("an event from a switch detection never saw still folds", function()
+  enable()
+  write(state_dir .. "/devices.conf", (base_conf:gsub("tablet_switch=[^\n]*\n", "")))
+  write(state_dir .. "/folded", signature .. " 1\n")
+  load()
+  assert(find("device", function(c) return c[2].name == "keyboard" and c[2].enabled == false end))
+end)
+
 test("the fold switch is bound, with the CLI path quoted", function()
   enable()
   write(state_dir .. "/devices.conf", base_conf)
