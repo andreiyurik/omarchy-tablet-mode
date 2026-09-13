@@ -114,9 +114,14 @@ matrix.
 
 ### Known machines
 
-| Machine | Setting | Fold sensor | In systemd's hwdb |
-|---|---|---|---|
-| ThinkPad X1 Yoga Gen 6 | `portrait-swapped` | `thinkpad_acpi` | no |
+Models whose sensor needs anything other than `standard`. None is known yet:
+every machine tried so far, the ThinkPad X1 Yoga Gen 6 included, turns
+correctly with it.
+
+> **Upgrading from 1.2 or earlier?** Those versions had `standard` mirrored in
+> the upright positions, so machines with a correctly mounted sensor needed
+> `portrait-swapped` to turn right. If you picked that setting, set it back to
+> `auto`.
 
 **If yours needs anything other than `standard`, please file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)**

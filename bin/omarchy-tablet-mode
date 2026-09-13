@@ -69,24 +69,24 @@ SW_TABLET_MODE = 1  # bit in the evdev switch capabilities, linux/input-event-co
 
 ORIENTATIONS = ["normal", "right-up", "bottom-up", "left-up"]
 
-# Accelerometer mounting relative to the panel. "standard" is what the majority
-# of machines report; the rest are the mountings we have actually seen. The
-# lasting fix for a machine that needs one is an ACCEL_MOUNT_MATRIX in systemd's
-# hwdb, see the README.
+# iio-sensor-proxy's orientation to a Hyprland transform, per accelerometer
+# mounting. "standard" is the convention GNOME's mutter and iio-hyprland both
+# use: the left edge up is a quarter turn counter-clockwise (transform 1), the
+# right edge up three quarters (transform 3). It is right for every machine
+# whose sensor is mounted, or corrected in systemd's hwdb, as it should be;
+# the rest describe what is mirrored when it is not.
 MAPPINGS = {
-    "standard": {"normal": 0, "right-up": 1, "bottom-up": 2, "left-up": 3},
-    "portrait-swapped": {"normal": 0, "right-up": 3, "bottom-up": 2, "left-up": 1},
-    "landscape-swapped": {"normal": 2, "right-up": 1, "bottom-up": 0, "left-up": 3},
-    "rotated-180": {"normal": 2, "right-up": 3, "bottom-up": 0, "left-up": 1},
+    "standard": {"normal": 0, "right-up": 3, "bottom-up": 2, "left-up": 1},
+    "portrait-swapped": {"normal": 0, "right-up": 1, "bottom-up": 2, "left-up": 3},
+    "landscape-swapped": {"normal": 2, "right-up": 3, "bottom-up": 0, "left-up": 1},
+    "rotated-180": {"normal": 2, "right-up": 1, "bottom-up": 0, "left-up": 3},
 }
 
 # Models someone has turned by hand and found needing a mounting other than
 # "standard", keyed by the DMI name `detect` prints. The "auto" setting looks
 # the machine up here, so a known model works the moment the plugin is enabled.
 # An entry can go once systemd's hwdb corrects the sensor for that model.
-KNOWN_MOUNTINGS = {
-    "ThinkPad X1 Yoga Gen 6": "portrait-swapped",
-}
+KNOWN_MOUNTINGS = {}
 
 
 def resolve_mapping(name, model=None):

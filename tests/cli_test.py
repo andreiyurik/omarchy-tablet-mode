@@ -62,16 +62,35 @@ class PositionsTest(CliTestCase):
 
 
 class MappingTest(CliTestCase):
+    def setUp(self):
+        super().setUp()
+        known = mock.patch.dict(self.cli.KNOWN_MOUNTINGS, {"Odd Convertible 14": "rotated-180"})
+        known.start()
+        self.addCleanup(known.stop)
+
+    def test_standard_turns_the_way_gnome_and_iio_hyprland_do(self):
+        # mutter's meta_orientation_to_transform: left-up is 90 degrees, right-up 270.
+        standard = self.cli.MAPPINGS["standard"]
+        self.assertEqual((standard["left-up"], standard["right-up"]), (1, 3))
+
+    def test_each_mounting_is_standard_with_its_named_mirror(self):
+        m = self.cli.MAPPINGS
+        s = m["standard"]
+        self.assertEqual(m["portrait-swapped"], dict(s, **{"right-up": s["left-up"],
+                                                          "left-up": s["right-up"]}))
+        self.assertEqual(m["landscape-swapped"], dict(s, **{"normal": s["bottom-up"],
+                                                           "bottom-up": s["normal"]}))
+        self.assertEqual(m["rotated-180"], {k: (v + 2) % 4 for k, v in s.items()})
+
     def test_auto_uses_the_mounting_known_for_the_model(self):
-        self.assertEqual(self.cli.resolve_mapping("auto", "ThinkPad X1 Yoga Gen 6"),
-                         "portrait-swapped")
+        self.assertEqual(self.cli.resolve_mapping("auto", "Odd Convertible 14"), "rotated-180")
 
     def test_auto_falls_back_to_standard_for_an_unknown_model(self):
-        self.assertEqual(self.cli.resolve_mapping("auto", "Some Convertible 13"), "standard")
+        self.assertEqual(self.cli.resolve_mapping("auto", "ThinkPad X1 Yoga Gen 6"), "standard")
 
     def test_a_chosen_mounting_wins_over_the_known_one(self):
-        self.assertEqual(self.cli.resolve_mapping("rotated-180", "ThinkPad X1 Yoga Gen 6"),
-                         "rotated-180")
+        self.assertEqual(self.cli.resolve_mapping("portrait-swapped", "Odd Convertible 14"),
+                         "portrait-swapped")
 
     def test_every_known_mounting_exists(self):
         for model, mounting in self.cli.KNOWN_MOUNTINGS.items():
@@ -98,7 +117,7 @@ class SettingsTest(CliTestCase):
 class DesiredTransformTest(CliTestCase):
     def desired(self, **kwargs):
         args = {"mapping": self.cli.MAPPINGS["standard"], "tablet_only": True,
-                "is_locked": False, "is_folded": True, "orientation": "right-up",
+                "is_locked": False, "is_folded": True, "orientation": "left-up",
                 "recorded": 0}
         args.update(kwargs)
         return self.cli.desired_transform(**args)
