@@ -204,6 +204,11 @@ workspace showing on the panel is touched, and only in the dwindle layout.
 position and scale are carried over, but anything else set on that output
 (such as VRR) is not, while the panel is turned.
 
+**A machine that locks while folded has to be opened to type the password.**
+The built-in keyboard is off in tablet position, and Omarchy has no on-screen
+keyboard. Opening the lid switches the keyboard back on at once; an on-screen
+keyboard is a job for its own plugin, not this one.
+
 **A window that ignores resize requests stays the size it was.** Nothing here
 can help a hung application; it will sit at its old geometry until it responds.
 
