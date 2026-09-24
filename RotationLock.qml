@@ -11,10 +11,13 @@ import qs.Ui
 // keeps its name goes on working in its old form until then.
 //
 // The rotation itself needs no button: the accelerometer handles it. What the
-// panel is for is everything a person folding the machine still wants a hand
-// in -- freezing the orientation, turning it by hand, the pen -- and it has to
-// work under a finger, since a folded machine has no mouse and no middle
-// button. So a tap opens it, and every control in it is a full-width target.
+// panel is for is the two things a person holding a folded machine still
+// reaches for -- the on-screen keyboard, and freezing or turning the screen --
+// and it has to work under a finger, since a folded machine has no mouse and
+// no middle button. So a tap opens it, and every control in it is a big
+// target. Settings made once and then forgotten wait behind a button at the
+// bottom, out of the way but still within a finger's reach, since the shell
+// offers no other place to change them.
 Panel {
   id: root
   moduleName: "andreiyurik.tablet-mode"
@@ -29,7 +32,6 @@ Panel {
   readonly property bool locked: service ? service.locked : false
   readonly property bool folded: service ? service.folded : false
   readonly property bool hasFoldSensor: service ? service.hasFoldSensor : true
-  readonly property bool hasPen: service ? service.hasPen : false
   readonly property string orientation: service ? service.orientation : "normal"
   readonly property bool sensorAvailable: service ? service.sensorAvailable : true
   readonly property bool sensorInstalled: service ? service.sensorInstalled : true
@@ -41,9 +43,6 @@ Panel {
   // saving one is all it takes to apply it.
   readonly property string mapping: setting("mapping", "auto")
   readonly property bool allPositions: setting("allPositions", false) === true
-  readonly property bool hideInLaptopMode: setting("hideInLaptopMode", false) === true
-  readonly property bool hideCursorWithPen: setting("hideCursorWithPen", false) === true
-  readonly property string penPressure: setting("penPressure", "normal")
   readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
   function save(name, value) {
@@ -53,9 +52,11 @@ Panel {
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
   }
 
-  // With a fold sensor and this setting on, the button stays out of the bar
-  // until the machine is folded, since nothing rotates before then.
-  visible: !hideInLaptopMode || !hasFoldSensor || folded || locked || opened
+  // Open as a laptop, nothing turns and the keyboard is the real one, so the
+  // button stays out of the bar until the machine folds. It stays while a
+  // lock is held, so the lock can be let go, and wherever the screen turns
+  // as a laptop too.
+  visible: !hasFoldSensor || allPositions || folded || locked || opened
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -79,12 +80,17 @@ Panel {
   // The rows the cursor walks, top to bottom. Each has as many cells as it
   // has buttons; a toggle row has one.
   readonly property var rows: {
-    var list = [{ id: "screen", cells: 3 }, { id: "allPositions", cells: 1 }]
-    if (hasPen) list.push({ id: "hideCursor", cells: 1 }, { id: "pressure", cells: 3 })
-    if (keyboard !== "") list.push({ id: "keyboardOnFold", cells: 1 }, { id: "keyboardToggle", cells: 1 })
-    list.push({ id: "mapping", cells: mappingOptions.length })
+    var list = []
+    if (keyboard !== "") list.push({ id: "keyboardToggle", cells: 1 })
+    list.push({ id: "screen", cells: 3 }, { id: "settings", cells: 1 })
+    if (settingsShown) {
+      list.push({ id: "allPositions", cells: 1 })
+      if (keyboard !== "") list.push({ id: "keyboardOnFold", cells: 1 })
+      list.push({ id: "mapping", cells: mappingOptions.length })
+    }
     return list
   }
+  property bool settingsShown: false
   property int cursorRow: 0
   property int cursorCell: 0
   property bool cursorActive: false
@@ -117,9 +123,8 @@ Panel {
     if (!cursorActive) return
     var row = rows[cursorRow].id
     if (row === "screen") screenActions[cursorCell].run()
+    else if (row === "settings") settingsShown = !settingsShown
     else if (row === "allPositions") save("allPositions", !allPositions)
-    else if (row === "hideCursor") save("hideCursorWithPen", !hideCursorWithPen)
-    else if (row === "pressure") save("penPressure", pressureOptions[cursorCell].value)
     else if (row === "keyboardOnFold") save("keyboardOnFold", !keyboardOnFold)
     else if (row === "keyboardToggle") { if (service) service.toggleKeyboard() }
     else if (row === "mapping") save("mapping", mappingOptions[cursorCell].value)
@@ -128,8 +133,9 @@ Panel {
   onOpenedChanged: {
     if (!opened) return
     cursorActive = false
+    settingsShown = false
     cursorRow = 0
-    cursorCell = 1
+    cursorCell = 0
     if (service) service.refresh()
   }
   onRowsChanged: if (cursorRow >= rows.length) cursorRow = rows.length - 1
@@ -145,12 +151,6 @@ Panel {
     { label: root.locked ? "Unlock" : "Lock", icon: root.locked ? "\u{F033E}" : "\u{F0FC6}",
       run: function() { if (root.service) root.service.toggleLock() } },
     { label: "Right", icon: "\u{F0467}", run: function() { if (root.service) root.service.rotate("prev") } }
-  ]
-
-  readonly property var pressureOptions: [
-    { value: "soft", label: "Soft" },
-    { value: "normal", label: "Normal" },
-    { value: "firm", label: "Firm" }
   ]
 
   readonly property var mappingOptions: [
@@ -270,6 +270,25 @@ Panel {
           font.pixelSize: Style.font.bodySmall
         }
 
+        // ---------- Keyboard ----------
+        // First, and the width of the panel: it is what a folded machine is
+        // reached for most, and it has to be found without reading.
+        Button {
+          visible: root.keyboard !== ""
+          width: parent.width
+          iconText: "\u{F030C}"  // nf-md-keyboard
+          iconSize: Style.font.iconLarge
+          text: "Keyboard"
+          fontSize: Style.font.body
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          verticalPadding: Style.space(16)
+          bordered: true
+          hasCursor: root.cursorOn("keyboardToggle")
+          onClicked: { if (root.service) root.service.toggleKeyboard() }
+          onHovered: function(h) { if (h) root.point("keyboardToggle") }
+        }
+
         // ---------- Screen ----------
         Row {
           id: screenRow
@@ -298,82 +317,58 @@ Panel {
           }
         }
 
-        Toggle {
+        // Nothing to bring up yet. Say which keyboards folding works with.
+        Text {
+          visible: root.keyboard === ""
           width: parent.width
-          label: "Rotate as a laptop too"
-          description: root.hasFoldSensor
-            ? "Off, the screen turns only once folded, so a laptop on your knees never flips."
-            : "This machine has no fold sensor, so the screen turns in every position."
-          checked: root.allPositions || !root.hasFoldSensor
-          foreground: root.bar.foreground
-          fontFamily: root.bar.fontFamily
-          hasCursor: root.cursorOn("allPositions")
-          onClicked: root.save("allPositions", !root.allPositions)
-          onHovered: function(h) { if (h) root.point("allPositions") }
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "For typing while folded, add an on-screen keyboard from plugins.omarchy.org, "
+            + "such as On-Screen Keyboard or Omaqwerty. It comes up as you fold the machine."
+          color: root.bar.foreground
+          opacity: 0.6
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
         }
 
-        // ---------- Pen ----------
-        PanelSeparator {
-          visible: root.hasPen
+        // ---------- Settings ----------
+        // Set once, if ever. Folded away until asked for.
+        Button {
+          width: parent.width
+          iconText: root.settingsShown ? "\u{F0143}" : "\u{F0140}"  // nf-md-chevron_up / _down
+          text: "Settings"
+          fontSize: Style.font.bodySmall
           foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          verticalPadding: Style.space(10)
+          hasCursor: root.cursorOn("settings")
+          onClicked: root.settingsShown = !root.settingsShown
+          onHovered: function(h) { if (h) root.point("settings") }
         }
 
         Column {
-          visible: root.hasPen
+          visible: root.settingsShown
           width: parent.width
           spacing: Style.space(10)
-
-          PanelSectionHeader {
-            text: "PEN"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
 
           Toggle {
             width: parent.width
-            label: "Hide the cursor while writing"
-            description: "The pointer disappears while the pen is near the screen, and comes back when a mouse or touchpad moves."
-            checked: root.hideCursorWithPen
+            label: "Rotate as a laptop too"
+            description: root.hasFoldSensor
+              ? "Off, the screen turns only once folded, so a laptop on your knees never flips."
+              : "This machine has no fold sensor, so the screen turns in every position."
+            checked: root.allPositions || !root.hasFoldSensor
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            hasCursor: root.cursorOn("hideCursor")
-            onClicked: root.save("hideCursorWithPen", !root.hideCursorWithPen)
-            onHovered: function(h) { if (h) root.point("hideCursor") }
-          }
-
-          PanelSectionHeader {
-            text: "PRESSURE"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ChoiceRow {
-            rowId: "pressure"
-            options: root.pressureOptions
-            value: root.penPressure
-            onChosen: function(v) { root.save("penPressure", v) }
-          }
-        }
-
-        // ---------- Keyboard ----------
-        PanelSeparator {
-          foreground: root.bar.foreground
-        }
-
-        Column {
-          width: parent.width
-          spacing: Style.space(10)
-
-          PanelSectionHeader {
-            text: "KEYBOARD"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
+            hasCursor: root.cursorOn("allPositions")
+            onClicked: root.save("allPositions", !root.allPositions)
+            onHovered: function(h) { if (h) root.point("allPositions") }
           }
 
           Toggle {
             visible: root.keyboard !== ""
             width: parent.width
-            label: "Show it when folded"
+            label: "Keyboard when folded"
             description: root.keyboard + " comes up as you fold the machine, and goes away as you open it."
             checked: root.keyboardOnFold
             foreground: root.bar.foreground
@@ -382,46 +377,6 @@ Panel {
             onClicked: root.save("keyboardOnFold", !root.keyboardOnFold)
             onHovered: function(h) { if (h) root.point("keyboardOnFold") }
           }
-
-          Button {
-            visible: root.keyboard !== ""
-            width: parent.width
-            iconText: "\u{F030C}"  // nf-md-keyboard
-            iconSize: Style.font.iconLarge
-            text: "Show or hide the keyboard"
-            fontSize: Style.font.bodySmall
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            verticalPadding: Style.space(12)
-            bordered: true
-            hasCursor: root.cursorOn("keyboardToggle")
-            onClicked: { if (root.service) root.service.toggleKeyboard() }
-            onHovered: function(h) { if (h) root.point("keyboardToggle") }
-          }
-
-          // Nothing to bring up yet. Say which keyboards folding works with.
-          Text {
-            visible: root.keyboard === ""
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "Folding can bring up an on-screen keyboard. Add one from plugins.omarchy.org, "
-              + "such as On-Screen Keyboard or Omaqwerty, and it appears here."
-            color: root.bar.foreground
-            opacity: 0.6
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-        }
-
-        // ---------- Mounting ----------
-        PanelSeparator {
-          foreground: root.bar.foreground
-        }
-
-        Column {
-          width: parent.width
-          spacing: Style.space(10)
 
           PanelSectionHeader {
             text: "SCREEN TURNS THE WRONG WAY?"

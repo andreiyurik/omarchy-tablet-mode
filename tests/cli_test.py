@@ -404,26 +404,11 @@ class BindsTest(CliTestCase):
 
 
 class PenTest(CliTestCase):
-    def test_nothing_chosen_is_hyprlands_defaults(self):
-        self.assertEqual(self.cli.pen_values({}), self.cli.PEN_DEFAULTS)
-        self.assertEqual(self.cli.pen_values({"penPressure": "normal"}), self.cli.PEN_DEFAULTS)
-
-    def test_presets_and_the_cursor(self):
-        self.assertEqual(self.cli.pen_values({"penPressure": "soft", "hideCursorWithPen": True}),
-                         (True, 0.0, 0.6))
-
-    def test_an_unknown_preset_leaves_the_range_alone(self):
-        self.assertEqual(self.cli.pen_values({"penPressure": "extreme"})[1:], (-1, -1))
-
-    def test_every_preset_is_a_range_libinput_accepts(self):
-        for name, (low, high) in self.cli.PEN_PRESSURE.items():
-            if (low, high) != (-1, -1):
-                self.assertTrue(0 <= low < high <= 1, name)
-
-    def test_the_options_are_written_as_lua(self):
-        self.assertEqual(self.cli.pen_statements((True, 0.15, 1.0)), [
-            "hl.config({ cursor = { hide_on_tablet = true }, input = { tablettool = "
-            "{ pressure_range_min = 0.15, pressure_range_max = 1.0 } } })"])
+    def test_the_cursor_hides_for_the_pen_and_comes_back(self):
+        self.assertEqual(self.cli.pen_statements(True),
+                         ["hl.config({ cursor = { hide_on_tablet = true } })"])
+        self.assertEqual(self.cli.pen_statements(False),
+                         ["hl.config({ cursor = { hide_on_tablet = false } })"])
 
 
 class KeyboardTest(CliTestCase):
@@ -479,6 +464,24 @@ class KeyboardTest(CliTestCase):
     def test_opening_by_hand_does_not_move_the_focus(self):
         monitors = [{"name": "HDMI-A-1", "focused": True}, {"name": "eDP-1", "focused": False}]
         self.assertEqual(self.run_with_monitors(monitors), [])
+
+    def run_command(self, action, is_folded):
+        with mock.patch.object(self.cli, "folded", return_value=is_folded), \
+                mock.patch.object(self.cli, "run_keyboard", return_value=True) as run, \
+                mock.patch.object(self.cli.sys, "argv", ["omarchy-tablet-mode", "keyboard", action]):
+            self.assertEqual(self.cli.main(), 0)
+        return run.call_args.kwargs["on_panel"]
+
+    def test_the_keyboard_button_opens_on_the_panel_while_folded(self):
+        self.assertTrue(self.run_command("toggle", True))
+        self.assertTrue(self.run_command("show", True))
+
+    def test_the_keyboard_button_opens_where_the_focus_is_as_a_laptop(self):
+        self.assertFalse(self.run_command("toggle", False))
+        self.assertFalse(self.run_command("toggle", None))
+
+    def test_hiding_the_keyboard_moves_no_focus(self):
+        self.assertFalse(self.run_command("hide", True))
 
     def test_folding_brings_the_keyboard_up_and_opening_puts_it_away(self):
         on_lid = self.cli.keyboard_on_lid

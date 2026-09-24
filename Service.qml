@@ -26,7 +26,6 @@ Item {
   property string orientation: "normal"
   property bool folded: false
   property bool hasFoldSensor: true
-  property bool hasPen: false
   property bool sensorAvailable: true
   // Whether iio-sensor-proxy is installed at all: without it no sensor ever
   // appears, and the fix is an install rather than a missing accelerometer.
@@ -68,7 +67,6 @@ Item {
     root.orientation = data.orientation || "normal"
     root.folded = data.folded === true
     root.hasFoldSensor = data.hasFoldSensor === true
-    root.hasPen = data.hasPen === true
     if (data.sensor !== undefined) root.sensorAvailable = data.sensor === true
     if (data.sensorInstalled !== undefined) root.sensorInstalled = data.sensorInstalled === true
     root.keyboard = data.keyboard || ""

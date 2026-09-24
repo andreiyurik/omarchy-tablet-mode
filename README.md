@@ -58,8 +58,8 @@ compositor only, and puts its changes back after every config reload.
 | Hold it upright | The picture stays sideways | The screen turns with you |
 | Touch or draw | Taps land off to the side | Touch and pen follow the screen |
 | Work with it on your knees | — | Nothing flips until you fold it |
-| Read in bed | The screen spins as you shift | One tap on the bar locks it |
-| Write with the pen | The cursor sits under the tip | It can hide while you write |
+| Read in bed | The screen spins as you shift | Lock it from the bar |
+| Write with the pen | The cursor sits under the tip | The cursor hides while you write |
 | Need to type while folded | No keys to reach | An on-screen keyboard comes up |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
@@ -70,8 +70,8 @@ compositor only, and puts its changes back after every config reload.
 - **Rotates like a tablet, not a phone.** Only once folded, so a laptop on your
   knees never flips.
 - **Instant.** The screen turns live, without reloading your config.
-- **Made for fingers.** A tap on the bar opens a panel whose every control is
-  big enough to hit on a folded machine with no mouse.
+- **Made for fingers.** Fold the machine and a button appears in the bar. It
+  opens a panel of big targets: the keyboard, and the rotation lock.
 - **At home in Omarchy.** Your touchpad toggle, clamshell mode, external
   monitors and hyprmoncfg keep working as before.
 - **Built for real life.** Suspend while folded, config reloads and a sensor
@@ -132,29 +132,29 @@ works and is not in the table, please file a
 
 ## The panel
 
-<img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, buttons to turn the screen left, lock it and turn it right, a switch to rotate as a laptop too, pen settings, the on-screen keyboard, and the accelerometer mounting.">
+<img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, a button to show or hide the on-screen keyboard, buttons to turn the screen left, lock it and turn it right, and a Settings button.">
 
-Tap the rotation icon in the bar. The panel shows whether the machine is a
-laptop or a tablet and what the screen is doing, and holds everything you might
-still want a hand in:
+Fold the machine and the rotation icon appears in the bar; open it again and
+the icon goes, since a laptop has nothing to turn. It stays while a lock is
+held, and always on a machine with no fold sensor. A tap opens the panel, which
+says what the machine and the screen are doing and holds the two things a
+folded machine is reached for:
 
+- **Keyboard.** Shows or hides the on-screen keyboard. See
+  [Typing while folded](#typing-while-folded).
 - **Left, Lock, Right.** Lock freezes the orientation, the way a tablet's
   rotation lock does. Turning the screen by hand locks it too, so the sensor
   does not turn it straight back; turning it back to landscape lets go.
+
+**Settings**, at the bottom, opens what is set once, if ever:
+
 - **Rotate as a laptop too.** Follow the sensor in every position, not only
-  when folded.
-- **Pen**, when the machine has one built in: hide the cursor while writing,
-  and a pressure preset. See [The pen](#the-pen).
-- **Keyboard**: whether folding brings up an on-screen keyboard, and a button
-  to show or hide it. See [Typing while folded](#typing-while-folded).
+  when folded. The icon then stays in the bar.
+- **Keyboard when folded.** Whether folding brings up the on-screen keyboard.
 - **Screen turns the wrong way?** The accelerometer mounting; see below.
 
 With a mouse, a middle click on the icon turns the screen without opening
-anything. To keep the icon out of the bar until the machine is folded:
-
-```bash
-omarchy bar set andreiyurik.tablet-mode hideInLaptopMode true --json
-```
+anything.
 
 <br clear="right">
 
@@ -164,7 +164,7 @@ The sensor reports which way is up, but not how it was screwed into the
 chassis. The default, `Auto`, knows the mounting of every model in
 [Known machines](#known-machines) and assumes the standard one for the rest.
 If yours comes out wrong, turn the machine, see which positions come out
-mirrored, and pick the matching entry in the panel:
+mirrored, and pick the matching entry under the panel's **Settings**:
 
 | Symptom | Choice |
 |---|---|
@@ -212,17 +212,12 @@ turns them with it. That alone fixes the most common complaint: left unbound,
 Hyprland spreads the pen across every monitor, so with an external display
 connected the cursor lands far from the tip.
 
-The panel adds two settings, shown only when the machine has a pen built in:
-
-- **Hide the cursor while writing.** The pointer disappears while the pen is
-  near the screen and comes back when a mouse or touchpad moves.
-- **Pressure.** *Soft* reaches full pressure well before you press hard; *Firm*
-  ignores the lightest touch; *Normal* leaves the pen's own range alone.
-
-Both are Hyprland options that apply to every pen and tablet at once, which on
-a laptop is the one pen it has. Left at their defaults, the plugin does not set
-them at all, so values in your `~/.config/hypr/input.lua` stand. Choosing one
-in the panel overrides them until you set it back.
+With a pen built in, the cursor hides while you write and comes back the
+moment a mouse or touchpad moves: a pointer sitting under the tip only gets in
+the way. This is Hyprland's `cursor:hide_on_tablet`, which applies to every pen
+and tablet at once, and which the plugin turns off again when it is disabled.
+Pressure is left to the pen and to your apps, whose own curves (Krita's,
+Xournal++'s) are the place to tune it.
 
 What the plugin deliberately leaves alone:
 
@@ -258,9 +253,9 @@ you opened yourself stays.
 | [Omaqwerty](https://github.com/frostmute/omarchy-omaqwerty) | `io.github.frostmute.tablet-keyboard` | Expected to work: opened the same way |
 | [On-Screen Keyboard](https://github.com/mtolhuys/omarchy-onscreen-keyboard) by mtolhuys | `io.github.mtolhuys.onscreen-keyboard` | Expected to work: through its documented `omarchy-shell onscreen-keyboard` commands |
 
-With more than one enabled, the first in this table is used. The panel's
-**Show it when folded** switch turns the behavior off, and its button shows or
-hides the keyboard by hand, as does:
+With more than one enabled, the first in this table is used. **Keyboard when
+folded**, under the panel's **Settings**, turns the behavior off. The panel's
+**Keyboard** button shows or hides it by hand, as does:
 
 ```bash
 ~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode keyboard toggle

@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "andreiyurik.tablet-mode",
   "name": "Tablet Mode",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and a touch-friendly bar panel holds the rotation lock and pen settings. Brings up an on-screen keyboard plugin when folded",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded and an on-screen keyboard plugin comes up. The bar button appears once folded, to lock the rotation",
   "kinds": [
     "service",
     "bar-widget"
@@ -17,16 +17,13 @@
   },
   "barWidget": {
     "displayName": "Tablet Mode",
-    "description": "Tap for the rotation lock, turning the screen by hand, and pen settings. Middle-click turns the screen.",
+    "description": "Shows up once the machine is folded. Tap it to lock the rotation, turn the screen by hand, or show and hide the on-screen keyboard. Middle-click turns the screen.",
     "category": "Hardware",
     "defaultSection": "right",
     "allowMultiple": false,
     "defaults": {
       "mapping": "auto",
       "allPositions": false,
-      "hideInLaptopMode": false,
-      "hideCursorWithPen": false,
-      "penPressure": "normal",
       "keyboardOnFold": true
     },
     "schema": [
@@ -50,32 +47,6 @@
         "label": "Rotate in laptop mode too",
         "defaultValue": false,
         "description": "Off means the accelerometer is followed only once the lid is folded back past the keyboard, which is how a tablet behaves and why a laptop on your knees does not flip. On follows it always, which is the setting for a machine with no fold sensor -- there the daemon rotates in every position regardless."
-      },
-      {
-        "key": "hideInLaptopMode",
-        "type": "boolean",
-        "label": "Hide the icon in laptop mode",
-        "defaultValue": false,
-        "description": "The button has little to do while the machine is open and the screen is not rotating, so this keeps it out of the bar until it does. It reappears the moment the machine is folded, or while a lock is being held."
-      },
-      {
-        "key": "hideCursorWithPen",
-        "type": "boolean",
-        "label": "Hide the cursor while writing",
-        "defaultValue": false,
-        "description": "Hides the pointer while the pen is near the screen, until a mouse or touchpad moves. Applies to every pen, which on a laptop is the one it has."
-      },
-      {
-        "key": "penPressure",
-        "type": "enum",
-        "label": "Pen pressure",
-        "options": [
-          "soft",
-          "normal",
-          "firm"
-        ],
-        "defaultValue": "normal",
-        "description": "Soft reaches full pressure well before pressing hard; firm ignores the lightest touch. Normal leaves the pen's own range, and whatever input.lua sets, alone."
       },
       {
         "key": "keyboardOnFold",
