@@ -63,18 +63,6 @@ BINDS_GLOBAL = "omarchy_tablet_mode_binds"
 # with no accelerometer -- and those two need very different advice.
 SENSOR_PROXY_POLICY = "/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf"
 
-# Pen pressure presets, as the window of the pen's own range that reads as
-# pressure 0..1 in the app. "normal" leaves the range alone.
-PEN_PRESSURE = {
-    "normal": (-1, -1),
-    "soft": (0.0, 0.6),   # full pressure well before pressing hard
-    "firm": (0.15, 1.0),  # a light touch does not count yet
-}
-
-# Hyprland's own defaults for the pen options the panel offers: hide the
-# cursor while the pen is in use, pressure range minimum and maximum.
-PEN_DEFAULTS = (False, -1, -1)
-
 # On-screen keyboards from the Omarchy plugin directory, in order of
 # preference: plugin id, name, and the omarchy-shell target and methods that
 # show, hide and toggle it. Two are plain panels, opened and closed through the
@@ -660,21 +648,15 @@ def bind_statements(conf, bind=True):
     return statements
 
 
-def pen_values(settings):
-    """The pen options the panel sets, in the order of PEN_DEFAULTS."""
-    low, high = PEN_PRESSURE.get(settings.get("penPressure"), PEN_PRESSURE["normal"])
-    return (settings.get("hideCursorWithPen") is True, low, high)
+def pen_statements(hide):
+    """Lua that hides the cursor while the pen is in use, or stops hiding it.
 
-
-def pen_statements(values):
-    """Lua that applies pen options. They are global in Hyprland, for every
-    pen and tablet, which on a laptop is the one pen it has."""
-    hide, low, high = values
-    return [
-        "hl.config({ cursor = { hide_on_tablet = %s }, input = { tablettool = "
-        "{ pressure_range_min = %s, pressure_range_max = %s } } })"
-        % ("true" if hide else "false", low, high)
-    ]
+    A pointer sitting under the tip only gets in the way of writing, and it
+    comes back the moment a mouse or touchpad moves, so a machine with a pen
+    built in gets this without asking. The option is global in Hyprland, for
+    every pen and tablet, which on a laptop is the one pen it has.
+    """
+    return ["hl.config({ cursor = { hide_on_tablet = %s } })" % ("true" if hide else "false")]
 
 
 # ----------------------------------------------------------------- rotation
@@ -847,11 +829,10 @@ def run_daemon(mapping_override=None, all_positions=False):
     if not has_fold_sensor(conf):
         log("no fold sensor on this machine; rotating in every position")
 
-    # "wired" is whether the switch binds are in place, and "pen" the pen
-    # options last applied: what a freshly loaded config has is Hyprland's
-    # defaults, or whatever the person set there themselves.
+    # "wired" is whether the switch binds are in place, and "pen" whether the
+    # cursor is being hidden for the pen. A freshly loaded config has neither.
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None, "wired": False, "pen": PEN_DEFAULTS,
+             "mapping": None, "wired": False, "pen": False,
              "lid": None, "keyboard": False}
     loop = GLib.MainLoop()
 
@@ -893,11 +874,8 @@ def run_daemon(mapping_override=None, all_positions=False):
             state["mapping"] = mapping_name
         tablet_only = not (all_positions or settings.get("allPositions") is True)
 
-        # Only options the panel changed are written, so pen settings made in
-        # input.lua stand until someone picks something else here.
-        pen = pen_values(settings)
-        if pen != state["pen"] and hypr_eval(pen_statements(pen)):
-            state["pen"] = pen
+        if conf.get("pen") and not state["pen"]:
+            state["pen"] = hypr_eval(pen_statements(True))
 
         proxy = state["proxy"]
         value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
@@ -1006,7 +984,7 @@ def run_daemon(mapping_override=None, all_positions=False):
             event = line.split(">>", 1)[0]
             if event == "configreloaded":
                 state["wired"] = False
-                state["pen"] = PEN_DEFAULTS
+                state["pen"] = False
             if event in ("configreloaded", "monitoradded", "monitoraddedv2"):
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
@@ -1075,12 +1053,12 @@ def run_daemon(mapping_override=None, all_positions=False):
     return 0
 
 
-def restore(pen=PEN_DEFAULTS):
+def restore(pen=False):
     apply_rotation(0)
     apply_input(False)
     hypr_eval(bind_statements({}, bind=False))
-    if pen != PEN_DEFAULTS:
-        hypr_eval(pen_statements(PEN_DEFAULTS))
+    if pen:
+        hypr_eval(pen_statements(False))
 
 
 # -------------------------------------------------------------------- setup
@@ -1207,7 +1185,10 @@ def main():
     if args.command == "fold":
         return cmd_fold(args.action)
     if args.command == "keyboard":
-        if run_keyboard(args.action):
+        # Folded, the machine is a tablet, and the keyboard belongs on its own
+        # panel even when an external monitor has the focus.
+        on_panel = args.action != "hide" and folded() is True
+        if run_keyboard(args.action, on_panel=on_panel):
             return 0
         log("no on-screen keyboard plugin is enabled")
         return 1
