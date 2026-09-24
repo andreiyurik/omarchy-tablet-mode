@@ -17,6 +17,7 @@ Subcommands:
   rotate    set orientation by hand: normal|right|inverted|left|next|prev
   lock      freeze the current orientation: on|off|toggle
   fold      record a fold switch event: on|off (Hyprland's switch binds run this)
+  keyboard  show or hide the on-screen keyboard plugin: show|hide|toggle
   status    report state as JSON, for the bar widget
   relayout  re-orient the split of two tiled windows on the panel
   setup     record the hardware, and drop the hyprland.lua block of versions before 1.4
@@ -73,6 +74,19 @@ PEN_PRESSURE = {
 # Hyprland's own defaults for the pen options the panel offers: hide the
 # cursor while the pen is in use, pressure range minimum and maximum.
 PEN_DEFAULTS = (False, -1, -1)
+
+# On-screen keyboards from the Omarchy plugin directory, in order of
+# preference: plugin id, name, and the omarchy-shell target and methods that
+# show, hide and toggle it. Two are plain panels, opened and closed through the
+# shell's own summon and hide; one has an IPC target of its own. Folding shows
+# the first one enabled, so a folded machine can still be typed on.
+KEYBOARDS = [
+    ("io.github.mtolhuys.onscreen-keyboard", "On-Screen Keyboard",
+     {"show": ["onscreen-keyboard", "show"], "hide": ["onscreen-keyboard", "hide"],
+      "toggle": ["onscreen-keyboard", "toggle"]}),
+    ("io.github.abdxdev.onscreen-keyboard", "On-Screen Keyboard", None),
+    ("io.github.frostmute.tablet-keyboard", "Omaqwerty", None),
+]
 
 # Omarchy's toggles. Hardcoded to ~/.local/state, as its toggle tools write
 # there regardless of XDG_STATE_HOME.
@@ -472,8 +486,9 @@ def refresh_conf(updates=None):
     return conf, write_conf(conf)
 
 
-def plugin_entry():
-    """This plugin's entry in shell.json, or None when the plugin is disabled.
+def plugin_entry(plugin_id=PLUGIN_ID):
+    """A plugin's entry in shell.json, this one's by default, or None when
+    that plugin is disabled.
 
     A third-party plugin is enabled exactly when its entry is there, and the
     entry carries the widget's settings inline. Reading them here means the
@@ -488,7 +503,7 @@ def plugin_entry():
 
     def find(node):
         if isinstance(node, dict):
-            if node.get("id") == PLUGIN_ID:
+            if node.get("id") == plugin_id:
                 return node
             node = list(node.values())
         if isinstance(node, list):
@@ -503,6 +518,36 @@ def plugin_entry():
 
 def plugin_enabled():
     return plugin_entry() is not None
+
+
+def find_keyboard():
+    """The on-screen keyboard to use: the first known one that is enabled."""
+    for keyboard in KEYBOARDS:
+        if plugin_entry(keyboard[0]) is not None:
+            return keyboard
+    return None
+
+
+def keyboard_command(keyboard, action):
+    """The omarchy-shell command that shows, hides or toggles a keyboard."""
+    plugin_id, _name, ipc = keyboard
+    if ipc:
+        return ["omarchy-shell"] + ipc[action]
+    method = {"show": "summon", "hide": "hide", "toggle": "toggle"}[action]
+    return ["omarchy-shell", "shell", method, plugin_id] + ([] if action == "hide" else ["{}"])
+
+
+def run_keyboard(action, keyboard=None):
+    """Show, hide or toggle the on-screen keyboard, if there is one."""
+    keyboard = keyboard or find_keyboard()
+    if not keyboard:
+        return False
+    try:
+        subprocess.Popen(keyboard_command(keyboard, action), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return False
+    return True
 
 
 def locked():
@@ -741,6 +786,7 @@ def status(conf=None):
         "hasFoldSensor": has_fold_sensor(conf),
         "hasPen": bool(conf.get("pen")),
         "sensorInstalled": sensor_proxy_installed(),
+        "keyboard": (find_keyboard() or (None, None))[1],
     }
 
 
@@ -777,7 +823,8 @@ def run_daemon(mapping_override=None, all_positions=False):
     # options last applied: what a freshly loaded config has is Hyprland's
     # defaults, or whatever the person set there themselves.
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None, "wired": False, "pen": PEN_DEFAULTS}
+             "mapping": None, "wired": False, "pen": PEN_DEFAULTS,
+             "lid": None, "keyboard": False}
     loop = GLib.MainLoop()
 
     def emit():
@@ -801,6 +848,19 @@ def run_daemon(mapping_override=None, all_positions=False):
             state["folded"] = is_folded
 
         settings = plugin_entry() or {}
+
+        # The on-screen keyboard comes up when the machine folds and goes
+        # away when it opens -- only one it brought up itself, so a keyboard
+        # opened by hand as a laptop stays. Only an actual change of the lid
+        # counts: the first reading after a start says nothing new.
+        if isinstance(is_folded, bool):
+            if state["lid"] is not None and is_folded != state["lid"]:
+                if is_folded and settings.get("keyboardOnFold", True) is not False:
+                    state["keyboard"] = run_keyboard("show")
+                elif not is_folded and state["keyboard"]:
+                    run_keyboard("hide")
+                    state["keyboard"] = False
+            state["lid"] = is_folded
         mapping_name = resolve_mapping(mapping_override or settings.get("mapping") or "auto")
         if mapping_name != state["mapping"]:
             log("accelerometer mounting: %s" % mapping_name)
@@ -1090,6 +1150,9 @@ def main():
     fold = sub.add_parser("fold", help="record a fold switch event")
     fold.add_argument("action", choices=["on", "off"])
 
+    keyboard = sub.add_parser("keyboard", help="show or hide the on-screen keyboard")
+    keyboard.add_argument("action", nargs="?", default="toggle", choices=["show", "hide", "toggle"])
+
     sub.add_parser("status", help="report state as JSON")
     sub.add_parser("detect", help="print detected hardware")
     sub.add_parser("relayout", help="re-orient the split of two tiled windows")
@@ -1117,6 +1180,11 @@ def main():
         return cmd_lock(args.action)
     if args.command == "fold":
         return cmd_fold(args.action)
+    if args.command == "keyboard":
+        if run_keyboard(args.action):
+            return 0
+        log("no on-screen keyboard plugin is enabled")
+        return 1
     if args.command == "status":
         print(json.dumps(status()))
         return 0

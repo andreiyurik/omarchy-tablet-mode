@@ -33,6 +33,7 @@ Panel {
   readonly property string orientation: service ? service.orientation : "normal"
   readonly property bool sensorAvailable: service ? service.sensorAvailable : true
   readonly property bool sensorInstalled: service ? service.sensorInstalled : true
+  readonly property string keyboard: service ? service.keyboard : ""
 
   // ----------------------------------------------------------------- settings
 
@@ -43,6 +44,7 @@ Panel {
   readonly property bool hideInLaptopMode: setting("hideInLaptopMode", false) === true
   readonly property bool hideCursorWithPen: setting("hideCursorWithPen", false) === true
   readonly property string penPressure: setting("penPressure", "normal")
+  readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
   function save(name, value) {
     var change = {}
@@ -79,6 +81,7 @@ Panel {
   readonly property var rows: {
     var list = [{ id: "screen", cells: 3 }, { id: "allPositions", cells: 1 }]
     if (hasPen) list.push({ id: "hideCursor", cells: 1 }, { id: "pressure", cells: 3 })
+    if (keyboard !== "") list.push({ id: "keyboardOnFold", cells: 1 }, { id: "keyboardToggle", cells: 1 })
     list.push({ id: "mapping", cells: mappingOptions.length })
     return list
   }
@@ -117,6 +120,8 @@ Panel {
     else if (row === "allPositions") save("allPositions", !allPositions)
     else if (row === "hideCursor") save("hideCursorWithPen", !hideCursorWithPen)
     else if (row === "pressure") save("penPressure", pressureOptions[cursorCell].value)
+    else if (row === "keyboardOnFold") save("keyboardOnFold", !keyboardOnFold)
+    else if (row === "keyboardToggle") { if (service) service.toggleKeyboard() }
     else if (row === "mapping") save("mapping", mappingOptions[cursorCell].value)
   }
 
@@ -347,6 +352,65 @@ Panel {
             options: root.pressureOptions
             value: root.penPressure
             onChosen: function(v) { root.save("penPressure", v) }
+          }
+        }
+
+        // ---------- Keyboard ----------
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "KEYBOARD"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Toggle {
+            visible: root.keyboard !== ""
+            width: parent.width
+            label: "Show it when folded"
+            description: root.keyboard + " comes up as you fold the machine, and goes away as you open it."
+            checked: root.keyboardOnFold
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            hasCursor: root.cursorOn("keyboardOnFold")
+            onClicked: root.save("keyboardOnFold", !root.keyboardOnFold)
+            onHovered: function(h) { if (h) root.point("keyboardOnFold") }
+          }
+
+          Button {
+            visible: root.keyboard !== ""
+            width: parent.width
+            iconText: "\u{F030C}"  // nf-md-keyboard
+            iconSize: Style.font.iconLarge
+            text: "Show or hide the keyboard"
+            fontSize: Style.font.bodySmall
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            verticalPadding: Style.space(12)
+            bordered: true
+            hasCursor: root.cursorOn("keyboardToggle")
+            onClicked: { if (root.service) root.service.toggleKeyboard() }
+            onHovered: function(h) { if (h) root.point("keyboardToggle") }
+          }
+
+          // Nothing to bring up yet. Say which keyboards folding works with.
+          Text {
+            visible: root.keyboard === ""
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "Folding can bring up an on-screen keyboard. Add one from plugins.omarchy.org, "
+              + "such as On-Screen Keyboard or Omaqwerty, and it appears here."
+            color: root.bar.foreground
+            opacity: 0.6
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
 
