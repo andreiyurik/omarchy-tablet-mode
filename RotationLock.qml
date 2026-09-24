@@ -5,6 +5,11 @@ import qs.Ui
 
 // The bar button and the panel it opens.
 //
+// Named for the rotation lock it began as. The name stays: the shell caches
+// the plugin's directory, so an entry point under a new name fails to load
+// after `omarchy plugin update` until the shell restarts, while a file that
+// keeps its name goes on working in its old form until then.
+//
 // The rotation itself needs no button: the accelerometer handles it. What the
 // panel is for is everything a person folding the machine still wants a hand
 // in -- freezing the orientation, turning it by hand, the pen -- and it has to

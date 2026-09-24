@@ -469,6 +469,15 @@ class SetupTest(CliTestCase):
         self.assertIn('dofile("/y.lua")', text)
         self.assertTrue(self.cli.subprocess.run.called)
 
+    def test_a_symlinked_hyprland_lua_stays_a_link(self):
+        dotfiles = os.path.join(self.home, "dotfiles", "hyprland.lua")
+        self.write(dotfiles, self.user_config + "\n" + self.old_block())
+        os.remove(self.lua)
+        os.symlink(dotfiles, self.lua)
+        self.cli.setup()
+        self.assertTrue(os.path.islink(self.lua))
+        self.assertNotIn(self.cli.MARKER_BEGIN, self.read(dotfiles))
+
     def test_a_missing_hyprland_lua_is_not_an_error(self):
         os.remove(self.lua)
         self.assertEqual(self.cli.setup(), 0)

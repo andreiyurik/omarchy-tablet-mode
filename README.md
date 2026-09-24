@@ -37,15 +37,18 @@ it becomes a tablet. Open it and it is a laptop again.
 ## Install
 
 ```bash
-sudo pacman -S --needed iio-sensor-proxy
 omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
 ```
 
 That's it — fold your laptop.
 
-The plugin adds a small marked block to `~/.config/hypr/hyprland.lua` to load
-its Hyprland fragment, and backs the original file up once, to
-`hyprland.lua.tablet-mode-backup`.
+Turning the screen with the machine takes one package from the Arch
+repositories, **iio-sensor-proxy**, which reads the accelerometer. Add it from
+the Omarchy menu under *Install › Package*. Until it is there, the panel says
+so, and everything else already works.
+
+The plugin writes nothing into `~/.config/hypr`. It changes the running
+compositor only, and puts its changes back after every config reload.
 
 ## What you get
 
@@ -55,7 +58,8 @@ its Hyprland fragment, and backs the original file up once, to
 | Hold it upright | The picture stays sideways | The screen turns with you |
 | Touch or draw | Taps land off to the side | Touch and pen follow the screen |
 | Work with it on your knees | — | Nothing flips until you fold it |
-| Read in bed | The screen spins as you shift | One click on the bar locks it |
+| Read in bed | The screen spins as you shift | One tap on the bar locks it |
+| Write with the pen | The cursor sits under the tip | It can hide while you write |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
 ## Why it feels native
@@ -65,12 +69,14 @@ its Hyprland fragment, and backs the original file up once, to
 - **Rotates like a tablet, not a phone.** Only once folded, so a laptop on your
   knees never flips.
 - **Instant.** The screen turns live, without reloading your config.
+- **Made for fingers.** A tap on the bar opens a panel whose every control is
+  big enough to hit on a folded machine with no mouse.
 - **At home in Omarchy.** Your touchpad toggle, clamshell mode, external
   monitors and hyprmoncfg keep working as before.
 - **Built for real life.** Suspend while folded, config reloads and a sensor
   that hiccups are all handled — and tested on real hardware.
-- **Leaves no mess.** No sudo, no system services. Disable or remove it, and
-  your laptop is simply a laptop again.
+- **Leaves no mess.** No root, no system services, no edits to your config
+  files. Disable or remove it, and your laptop is simply a laptop again.
 
 ## Will it work on my laptop?
 
@@ -117,56 +123,72 @@ changed means the sensor works. Then, with the plugin installed:
 ```
 
 `tablet_switch` or `tablet_sysfs` should name something, `touch` should list
-your touchscreen and pen, and `internal` only the built-in keyboard and
-pointers. If any of that is wrong, or your machine works and is not in the
-table, please file a
+your touchscreen and pen, `internal` only the built-in keyboard and pointers,
+and `sensor_proxy` should be `true`. If any of that is wrong, or your machine
+works and is not in the table, please file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)
 — it asks for that output and a few ticks, and takes two minutes.
 
-## Settings
+## The panel
 
-Right-click the bar widget to open its settings.
+<img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, buttons to turn the screen left, lock it and turn it right, a switch to rotate as a laptop too, pen settings, and the accelerometer mounting.">
 
-| Setting | What it does |
-|---|---|
-| **Which way the screen turns** | How the accelerometer is mounted relative to the panel. `auto` uses the mounting known for your model, and `standard` for any other |
-| **Rotate in laptop mode too** | Follow the sensor in every position, not only when folded |
-| **Hide the icon in laptop mode** | Keep the lock out of the bar until it has something to do |
+Tap the rotation icon in the bar. The panel shows whether the machine is a
+laptop or a tablet and what the screen is doing, and holds everything you might
+still want a hand in:
+
+- **Left, Lock, Right.** Lock freezes the orientation, the way a tablet's
+  rotation lock does. Turning the screen by hand locks it too, so the sensor
+  does not turn it straight back; turning it back to landscape lets go.
+- **Rotate as a laptop too.** Follow the sensor in every position, not only
+  when folded.
+- **Pen**, when the machine has one built in: hide the cursor while writing,
+  and a pressure preset. See [The pen](#the-pen).
+- **Screen turns the wrong way?** The accelerometer mounting; see below.
+
+With a mouse, a middle click on the icon turns the screen without opening
+anything. To keep the icon out of the bar until the machine is folded:
+
+```bash
+omarchy bar set andreiyurik.tablet-mode hideInLaptopMode true --json
+```
+
+<br clear="right">
 
 ### If the screen rotates the wrong way
 
 The sensor reports which way is up, but not how it was screwed into the
-chassis. The default, `auto`, knows the mounting of every model in
-[Known machines](#known-machines) and assumes `standard` for the rest. If yours
-comes out wrong, turn the machine, see which positions come out mirrored, and
-pick the matching entry:
+chassis. The default, `Auto`, knows the mounting of every model in
+[Known machines](#known-machines) and assumes the standard one for the rest.
+If yours comes out wrong, turn the machine, see which positions come out
+mirrored, and pick the matching entry in the panel:
 
-| Symptom | Setting |
+| Symptom | Choice |
 |---|---|
-| Only the two upright positions are mirrored | `portrait-swapped` |
-| Only the two flat positions are mirrored | `landscape-swapped` |
-| Everything is upside down | `rotated-180` |
+| Only the two upright positions are mirrored | `Upright ⇄` |
+| Only the two flat positions are mirrored | `Flat ⇄` |
+| Everything is upside down | `180°` |
 
 That setting is a workaround. The lasting fix belongs in systemd: its
 [`60-sensor.hwdb`](https://github.com/systemd/systemd/blob/main/hwdb.d/60-sensor.hwdb)
 carries an `ACCEL_MOUNT_MATRIX` per model, and iio-sensor-proxy applies it for
 every desktop, not just this one. A machine that needs anything other than
-`standard` here is a machine missing from that file. `monitor-sensor`, which
+`Auto` here is a machine missing from that file. `monitor-sensor`, which
 ships with iio-sensor-proxy, shows what the sensor reports while you try a
 matrix.
 
 ### Known machines
 
-Models whose sensor needs anything other than `standard`. None is known yet:
-every machine tried so far, the ThinkPad X1 Yoga Gen 6 included, turns
-correctly with it.
+Models whose sensor needs anything other than the standard mounting. None is
+known yet: every machine tried so far, the ThinkPad X1 Yoga Gen 6 included,
+turns correctly with it.
 
-> **Upgrading from 1.2 or earlier?** Those versions had `standard` mirrored in
-> the upright positions, so machines with a correctly mounted sensor needed
-> `portrait-swapped` to turn right. If you picked that setting, set it back to
-> `auto`.
+> **Upgrading from 1.2 or earlier?** Those versions had the standard mounting
+> mirrored in the upright positions, so machines with a correctly mounted
+> sensor needed `portrait-swapped` to turn right. If you picked that setting,
+> set it back to `Auto`.
 
-**If yours needs anything other than `standard`, please file a
+**If yours needs anything other than `Auto`, please file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)**
 with the output of:
 
@@ -175,16 +197,10 @@ with the output of:
 ```
 
 It prints the model as DMI reports it, along with the panel, digitizer and fold
-sensor that were found, and the mounting `auto` picks. A model reported here is
-added to `auto`, so the next person with it needs no setting at all. Each entry
+sensor that were found, and the mounting `Auto` picks. A model reported here is
+added to `Auto`, so the next person with it needs no setting at all. Each entry
 is also a draft for the hwdb; once a model is fixed upstream, it can leave the
 table.
-
-## The bar widget
-
-Click to lock the current orientation, the way a tablet's rotation lock works.
-Middle-click rotates by hand. The icon shows whether the sensor is being
-followed or the orientation is frozen.
 
 ## The pen
 
@@ -193,36 +209,45 @@ turns them with it. That alone fixes the most common complaint: left unbound,
 Hyprland spreads the pen across every monitor, so with an external display
 connected the cursor lands far from the tip.
 
-Everything else about the pen is a preference, and belongs in your
-`~/.config/hypr/input.lua` rather than in a plugin:
+The panel adds two settings, shown only when the machine has a pen built in:
 
-- **Eraser button and pressure range** are the `input.tablettool` options
-  (`eraser_button_mode`, `eraser_button_override`, `pressure_range_min`,
-  `pressure_range_max`), described in the
-  [Hyprland wiki](https://wiki.hypr.land/Configuring/Basics/Variables/). They
-  apply to every tablet, not per device, which is why the plugin leaves them
-  alone. libinput offers no pressure curve.
+- **Hide the cursor while writing.** The pointer disappears while the pen is
+  near the screen and comes back when a mouse or touchpad moves.
+- **Pressure.** *Soft* reaches full pressure well before you press hard; *Firm*
+  ignores the lightest touch; *Normal* leaves the pen's own range alone.
+
+Both are Hyprland options that apply to every pen and tablet at once, which on
+a laptop is the one pen it has. Left at their defaults, the plugin does not set
+them at all, so values in your `~/.config/hypr/input.lua` stand. Choosing one
+in the panel overrides them until you set it back.
+
+What the plugin deliberately leaves alone:
+
+- **Palm rejection is already there.** The kernel's `wacom` driver ignores
+  touch while the pen is near the screen, and libinput does the same for pens
+  it pairs with a touchscreen.
 - **Taps and buttons reach only apps that speak the Wayland tablet protocol.**
   Elsewhere the pen just moves the cursor, and Hyprland does not turn the
-  stylus buttons into mouse clicks. For writing and drawing, use apps built for
-  it: Xournal++ and Rnote (`sudo pacman -S xournalpp rnote`) or Krita.
-- **Remapping the stylus buttons** to keys takes
-  [input-remapper](https://github.com/sezanzeb/input-remapper), which runs as a
-  root service — something a plugin should not install for you.
+  stylus buttons into mouse clicks. Remapping them system-wide means reading
+  the pen's raw input device, which Omarchy deliberately does not let
+  ordinary programs do: raw input access is also what a keylogger needs. For
+  writing and drawing, use apps built for the pen: Xournal++, Rnote or Krita,
+  all in the Arch repositories.
+- **Eraser buttons** are the `input.tablettool` options `eraser_button_mode`
+  and `eraser_button_override` in the
+  [Hyprland wiki](https://wiki.hypr.land/Configuring/Basics/Variables/).
 - **Touch dying after using the pen** is a known driver bug on some Wacom AES
   machines ([input-wacom#310](https://github.com/linuxwacom/input-wacom/issues/310));
-  `sudo rmmod wacom && sudo modprobe wacom` brings it back until it is fixed.
+  reloading the `wacom` kernel module brings it back until it is fixed.
 
 ## A keybinding, if you want one
 
-The plugin does not claim a key. To add one, in `~/.config/hypr/bindings.lua`:
+The plugin does not claim a key. To add some, in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind(
-  "SUPER + ALT + O",
-  "Rotate screen",
-  os.getenv("HOME") .. "/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode rotate next"
-)
+local tablet = os.getenv("HOME") .. "/.config/omarchy/plugins/andreiyurik.tablet-mode"
+o.bind("SUPER + ALT + O", "Rotate screen", tablet .. "/bin/omarchy-tablet-mode rotate next")
+o.bind("SUPER + ALT + SHIFT + O", "Tablet Mode panel", "omarchy-shell andreiyurik.tablet-mode toggle")
 ```
 
 `SUPER + CTRL + O` is Omarchy's "Toggle menu", so pick something else.
@@ -236,7 +261,7 @@ cli=~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode
 
 $cli rotate normal|right|inverted|left|next|prev
 $cli lock on|off|toggle
-$cli status      # JSON, what the widget reads
+$cli status      # JSON, what the panel reads
 $cli relayout    # re-tile two windows on the panel for the current orientation
 $cli detect      # what it found on your machine — include this in issues
 ```
@@ -256,39 +281,46 @@ workspace showing on the panel is touched, and only in the dwindle layout.
 position and scale are carried over, but anything else set on that output
 (such as VRR) is not, while the panel is turned.
 
+**A config reload straightens a turned screen for a moment.** Reloading
+rebuilds the monitor rules from your files, and the plugin turns the panel back
+as soon as the reload finishes.
+
 **A machine that locks while folded has to be opened to type the password.**
 The built-in keyboard is off in tablet position, and Omarchy has no on-screen
 keyboard. Opening the lid switches the keyboard back on at once; an on-screen
 keyboard is a job for its own plugin, not this one.
+
+**The fold is heard while the shell runs.** The switch binds belong to the
+running session, so if Omarchy's shell is not running, folding does not switch
+the keyboard off.
 
 **A window that ignores resize requests stays the size it was.** Nothing here
 can help a hung application; it will sit at its old geometry until it responds.
 
 ## How it works, and why it works that way
 
-**Rotation is applied live with `hyprctl eval`.** On a Lua config Hyprland
-refuses `hyprctl keyword monitor`, but `eval` changes the running compositor
-directly — the same way Omarchy's own monitor scaling does — so turning the
-screen needs no config reload. The orientation is also recorded in
-`~/.local/state/omarchy/tablet-mode/devices.conf`, and the Hyprland fragment
-replays it whenever the config does reload.
+**Everything is applied at runtime, with `hyprctl eval`.** On a Lua config
+Hyprland refuses `hyprctl keyword`, but `eval` changes the running compositor
+directly — the same way Omarchy's own monitor scaling does. The screen turns
+without a config reload, and nothing is written into `~/.config/hypr`.
 
-**A reload cannot leave the screen straightened.** Another tool's monitor rules
-may load after the fragment — hyprmoncfg's do, by design — and undo the turn
-while the touchscreen stays turned. Rather than fight such tools for the last
-line of `hyprland.lua`, the daemon listens on Hyprland's event socket and, the
-moment a reload finishes, turns the panel back. You may see it straighten for
-a fraction of a second.
+**A reload is followed, not fought.** A reload rebuilds monitor rules, binds
+and options from the files: the panel straightens while the touchscreen stays
+turned, the switch binds are gone, and pen options are what the files say. The
+daemon listens on Hyprland's event socket and, the moment a reload finishes,
+puts all of it back. Because it comes after every file, this also wins over
+tools whose monitor rules load late, such as hyprmoncfg. The orientation last
+applied on purpose is kept in `~/.local/state/omarchy/tablet-mode/`.
 
 **Settings are read from `shell.json`.** Omarchy stores a widget's settings on
 its entry there, and the daemon reads them from that entry and follows the file,
-so a change applies at once and does not depend on the widget and its service
+so a change applies at once and does not depend on the panel and its service
 being loaded together.
 
 **The fold comes from Hyprland's switch events.** Hyprland receives
 `SW_TABLET_MODE` from libinput, which works on every vendor that reports it
 (`intel-vbtn`, `intel-hid`, `thinkpad_acpi`, `asus-nb-wmi`, `hp-wmi`, …) and
-needs no permissions. The fragment binds `switch:on` and `switch:off` for the
+needs no permissions. The daemon binds `switch:on` and `switch:off` for the
 device that has that switch, and the CLI switches input off or on at once. On
 ThinkPad, ASUS and HP machines the current state is also readable from sysfs,
 and there it wins: an event only says what changed.
@@ -311,20 +343,30 @@ maps its coordinates into that monitor's area but does *not* rotate its axes.
 Without a matching device transform, taps land in the wrong place and a swipe
 scrolls sideways.
 
-**Device settings are always written, including the neutral ones.** Hyprland
-does not reset `enabled` or `transform` when the config is reloaded — it keeps
-the last value. The one exception is a device Omarchy's own touchpad toggle has
-switched off: unfolding leaves it off.
+**Omarchy's toggles are respected.** A touchpad Omarchy's own toggle has
+switched off stays off when the machine unfolds, and a panel Omarchy has turned
+off, lid shut with a display attached, is never turned or woken.
 
-**The daemon reports; the widget does not poll.** It prints its state as a line
+**The daemon reports; the panel does not poll.** It prints its state as a line
 of JSON whenever something changes, and reacts to the lock and to switch events
 through file notifications. A sysfs fold sensor, which raises no events, is the
 only thing read on a timer.
 
-**Disabled means inert.** A third-party plugin is enabled exactly when its id is
-in `shell.json`; the fragment checks that and does nothing otherwise. When the
-daemon is stopped because the plugin was disabled or removed, it turns the
-panel upright and gives the keyboard back first.
+**Disabled means inert.** When the daemon is stopped because the plugin was
+disabled or removed, it turns the panel upright, gives the keyboard back, takes
+its switch binds down and returns the pen options to Hyprland's defaults.
+
+## Upgrading from 1.3 or earlier
+
+Earlier versions loaded a Hyprland fragment through a marked block at the end
+of `~/.config/hypr/hyprland.lua`. On its first start, this version takes that
+block out again, markers and all, and leaves the rest of the file as it is.
+Those versions also kept a copy of the file from before they first touched it,
+`hyprland.lua.tablet-mode-backup`; once you are happy, you can delete it.
+
+The new panel appears once Omarchy's shell restarts — at the next login, or
+with `omarchy-restart-shell`. Until then, the old rotation lock button keeps
+working.
 
 ## Development
 
@@ -332,11 +374,12 @@ panel upright and gives the keyboard back first.
 tests/run
 ```
 
-The suites work in a temporary `HOME` with `hyprctl` and `hl` stubbed out, so
-they never touch the running compositor or your config.
+The suite works in a temporary `HOME` with `hyprctl` stubbed out, so it never
+touches the running compositor or your config.
 
 The icon, the illustrations and `preview.png` are drawn by `assets/make-art`;
-change the words or colors there and run it again.
+change the words or colors there and run it again. `assets/panel.png` is a
+screenshot of the panel.
 
 ## Uninstall
 
@@ -344,13 +387,8 @@ change the words or colors there and run it again.
 omarchy plugin remove andreiyurik.tablet-mode
 ```
 
-That is enough on its own: the block in `hyprland.lua` checks that the plugin is
-still there before loading anything. To remove the block too, run this first,
-while the plugin is still installed:
-
-```bash
-~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode setup --remove
-```
+Nothing else is left to clean up: the plugin keeps no files outside its own
+folder but its state in `~/.local/state/omarchy/tablet-mode/`.
 
 ## License
 

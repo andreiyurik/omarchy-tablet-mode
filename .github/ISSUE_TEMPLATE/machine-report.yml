@@ -52,6 +52,7 @@ body:
         - label: The built-in keyboard and touchpad are off while folded
         - label: Touch and pen land under the finger after the screen turns
         - label: Everything still works after suspending while folded
+        - label: The panel opens with a tap, and its buttons work under a finger
 
   - type: input
     id: versions
