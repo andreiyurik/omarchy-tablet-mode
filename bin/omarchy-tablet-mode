@@ -1022,10 +1022,13 @@ def setup():
     if not pattern.search(text):
         return 0
     updated = pattern.sub("\n", text).rstrip("\n") + "\n"
-    tmp = HYPRLAND_LUA + ".tmp"
+    # Through a symlink to the file itself, so a dotfiles manager's link to
+    # hyprland.lua stays a link.
+    target = os.path.realpath(HYPRLAND_LUA)
+    tmp = target + ".tmp"
     with open(tmp, "w") as handle:
         handle.write(updated)
-    os.replace(tmp, HYPRLAND_LUA)
+    os.replace(tmp, target)
     log("removed the block earlier versions added to %s" % HYPRLAND_LUA)
     subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
     return 0

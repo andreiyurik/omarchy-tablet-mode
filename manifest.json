@@ -13,7 +13,7 @@
   ],
   "entryPoints": {
     "service": "Service.qml",
-    "barWidget": "TabletPanel.qml"
+    "barWidget": "RotationLock.qml"
   },
   "barWidget": {
     "displayName": "Tablet Mode",
