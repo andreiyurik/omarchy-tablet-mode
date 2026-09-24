@@ -537,11 +537,39 @@ def keyboard_command(keyboard, action):
     return ["omarchy-shell", "shell", method, plugin_id] + ([] if action == "hide" else ["{}"])
 
 
-def run_keyboard(action, keyboard=None):
-    """Show, hide or toggle the on-screen keyboard, if there is one."""
+def keyboard_on_lid(before, now, wanted, shown):
+    """What a change of the lid does to the on-screen keyboard: "show",
+    "hide" or None.
+
+    It comes up when the machine folds, if wanted, and goes away when it
+    opens -- only if the fold brought it up, so a keyboard opened by hand as
+    a laptop stays. Only an actual change counts: `before` is None for the
+    first reading after a start, which says nothing new.
+    """
+    if before is None or now is None or before == now:
+        return None
+    if now:
+        return "show" if wanted else None
+    return "hide" if shown else None
+
+
+def run_keyboard(action, keyboard=None, on_panel=False):
+    """Show, hide or toggle the on-screen keyboard, if there is one.
+
+    A keyboard opens on the focused monitor. On a fold that ought to be the
+    laptop's own panel -- the machine was folded to be used as a tablet -- so
+    with `on_panel` the panel is focused first when an external monitor has
+    the focus.
+    """
     keyboard = keyboard or find_keyboard()
     if not keyboard:
         return False
+    if on_panel:
+        panel = detect_panel()
+        name = panel_name(panel)
+        if name and not panel_off(panel) and not panel.get("focused"):
+            hyprctl("dispatch", "hl.dsp.focus({ monitor = %s })" % lua_string(name),
+                    parse_json=False)
     try:
         subprocess.Popen(keyboard_command(keyboard, action), stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -849,17 +877,15 @@ def run_daemon(mapping_override=None, all_positions=False):
 
         settings = plugin_entry() or {}
 
-        # The on-screen keyboard comes up when the machine folds and goes
-        # away when it opens -- only one it brought up itself, so a keyboard
-        # opened by hand as a laptop stays. Only an actual change of the lid
-        # counts: the first reading after a start says nothing new.
         if isinstance(is_folded, bool):
-            if state["lid"] is not None and is_folded != state["lid"]:
-                if is_folded and settings.get("keyboardOnFold", True) is not False:
-                    state["keyboard"] = run_keyboard("show")
-                elif not is_folded and state["keyboard"]:
-                    run_keyboard("hide")
-                    state["keyboard"] = False
+            action = keyboard_on_lid(state["lid"], is_folded,
+                                     settings.get("keyboardOnFold", True) is not False,
+                                     state["keyboard"])
+            if action == "show":
+                state["keyboard"] = run_keyboard("show", on_panel=True)
+            elif action == "hide":
+                run_keyboard("hide")
+                state["keyboard"] = False
             state["lid"] = is_folded
         mapping_name = resolve_mapping(mapping_override or settings.get("mapping") or "auto")
         if mapping_name != state["mapping"]:

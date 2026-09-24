@@ -60,6 +60,7 @@ compositor only, and puts its changes back after every config reload.
 | Work with it on your knees | — | Nothing flips until you fold it |
 | Read in bed | The screen spins as you shift | One tap on the bar locks it |
 | Write with the pen | The cursor sits under the tip | It can hide while you write |
+| Need to type while folded | No keys to reach | An on-screen keyboard comes up |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
 ## Why it feels native
@@ -144,6 +145,8 @@ still want a hand in:
   when folded.
 - **Pen**, when the machine has one built in: hide the cursor while writing,
   and a pressure preset. See [The pen](#the-pen).
+- **Keyboard**: whether folding brings up an on-screen keyboard, and a button
+  to show or hide it. See [Typing while folded](#typing-while-folded).
 - **Screen turns the wrong way?** The accelerometer mounting; see below.
 
 With a mouse, a middle click on the icon turns the screen without opening
@@ -240,6 +243,29 @@ What the plugin deliberately leaves alone:
   machines ([input-wacom#310](https://github.com/linuxwacom/input-wacom/issues/310));
   reloading the `wacom` kernel module brings it back until it is fixed.
 
+## Typing while folded
+
+Folded, the built-in keyboard is off and faces the table. Tablet Mode does not
+draw a keyboard of its own; it works with the on-screen keyboards already in
+the [Omarchy plugin directory](https://plugins.omarchy.org/). Enable one, and
+folding the machine brings it up on the laptop's panel, while opening it puts
+the keyboard away again — only if folding is what brought it up, so a keyboard
+you opened yourself stays.
+
+| Keyboard | Plugin id | Status |
+|---|---|---|
+| [On-Screen Keyboard](https://github.com/abdxdev/omarchy-onscreen-keyboard) by abdxdev | `io.github.abdxdev.onscreen-keyboard` | **Tested**: comes up on the panel and goes away |
+| [Omaqwerty](https://github.com/frostmute/omarchy-omaqwerty) | `io.github.frostmute.tablet-keyboard` | Expected to work: opened the same way |
+| [On-Screen Keyboard](https://github.com/mtolhuys/omarchy-onscreen-keyboard) by mtolhuys | `io.github.mtolhuys.onscreen-keyboard` | Expected to work: through its documented `omarchy-shell onscreen-keyboard` commands |
+
+With more than one enabled, the first in this table is used. The panel's
+**Show it when folded** switch turns the behavior off, and its button shows or
+hides the keyboard by hand, as does:
+
+```bash
+~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode keyboard toggle
+```
+
 ## A keybinding, if you want one
 
 The plugin does not claim a key. To add some, in `~/.config/hypr/bindings.lua`:
@@ -261,6 +287,7 @@ cli=~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode
 
 $cli rotate normal|right|inverted|left|next|prev
 $cli lock on|off|toggle
+$cli keyboard show|hide|toggle   # the on-screen keyboard plugin, if one is enabled
 $cli status      # JSON, what the panel reads
 $cli relayout    # re-tile two windows on the panel for the current orientation
 $cli detect      # what it found on your machine — include this in issues
@@ -286,9 +313,10 @@ rebuilds the monitor rules from your files, and the plugin turns the panel back
 as soon as the reload finishes.
 
 **A machine that locks while folded has to be opened to type the password.**
-The built-in keyboard is off in tablet position, and Omarchy has no on-screen
-keyboard. Opening the lid switches the keyboard back on at once; an on-screen
-keyboard is a job for its own plugin, not this one.
+The built-in keyboard is off in tablet position, Omarchy's lock screen has no
+on-screen keyboard, and Wayland shows nothing of another program's above a
+locked session, so no keyboard plugin can help there. Opening the lid switches
+the keyboard back on at once; a fingerprint reader works folded too.
 
 **The fold is heard while the shell runs.** The switch binds belong to the
 running session, so if Omarchy's shell is not running, folding does not switch
