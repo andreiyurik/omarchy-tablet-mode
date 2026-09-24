@@ -8,6 +8,10 @@ and whichever fold sensor the machine exposes. What cannot be detected -- how
 the accelerometer is mounted relative to the panel -- is a setting, because the
 only way to establish it is to turn the machine and look.
 
+Nothing is written into ~/.config/hypr. The daemon applies everything to the
+running compositor with `hyprctl eval`, and applies it again after every
+config reload, since a reload rebuilds monitor rules and binds from the files.
+
 Subcommands:
   daemon    follow the accelerometer and the fold (the plugin's Service runs this)
   rotate    set orientation by hand: normal|right|inverted|left|next|prev
@@ -15,7 +19,7 @@ Subcommands:
   fold      record a fold switch event: on|off (Hyprland's switch binds run this)
   status    report state as JSON, for the bar widget
   relayout  re-orient the split of two tiled windows on the panel
-  setup     wire the Hyprland fragment into hyprland.lua
+  setup     record the hardware, and drop the hyprland.lua block of versions before 1.4
   detect    print detected hardware, for bug reports
 """
 
@@ -30,7 +34,6 @@ import time
 
 PLUGIN_ID = "andreiyurik.tablet-mode"
 CLI = os.path.abspath(__file__)
-PLUGIN_DIR = os.path.dirname(os.path.dirname(CLI))
 
 HOME = os.path.expanduser("~")
 CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
@@ -43,9 +46,33 @@ LOCK_FILE = os.path.join(STATE_DIR, "locked")
 FOLD_FILE = os.path.join(STATE_DIR, "folded")
 
 SHELL_JSON = os.path.join(CONFIG_HOME, "omarchy/shell.json")
+# Versions before 1.4 loaded a Hyprland fragment through a marked block in
+# hyprland.lua. `setup` takes it out again; nothing writes one any more.
 HYPRLAND_LUA = os.path.join(CONFIG_HOME, "hypr/hyprland.lua")
 MARKER_BEGIN = "-- BEGIN %s" % PLUGIN_ID
 MARKER_END = "-- END %s" % PLUGIN_ID
+
+# The Lua global holding the switch binds this daemon made, so a restarted
+# daemon can take the old ones down before binding again. A config reload
+# clears both the binds and the global.
+BINDS_GLOBAL = "omarchy_tablet_mode_binds"
+
+# Present when iio-sensor-proxy is installed. Without the package the sensor
+# never appears on the bus, which from the outside looks exactly like a machine
+# with no accelerometer -- and those two need very different advice.
+SENSOR_PROXY_POLICY = "/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf"
+
+# Pen pressure presets, as the window of the pen's own range that reads as
+# pressure 0..1 in the app. "normal" leaves the range alone.
+PEN_PRESSURE = {
+    "normal": (-1, -1),
+    "soft": (0.0, 0.6),   # full pressure well before pressing hard
+    "firm": (0.15, 1.0),  # a light touch does not count yet
+}
+
+# Hyprland's own defaults for the pen options the panel offers: hide the
+# cursor while the pen is in use, pressure range minimum and maximum.
+PEN_DEFAULTS = (False, -1, -1)
 
 # Omarchy's toggles. Hardcoded to ~/.local/state, as its toggle tools write
 # there regardless of XDG_STATE_HOME.
@@ -281,6 +308,14 @@ def detect_touch_devices(devices, kernel):
     return [n for n in names if matches(n, internal)]
 
 
+def detect_pens(devices, kernel):
+    """The built-in pen alone, which decides whether the panel offers pen
+    settings. Without udev to ask, a tablet is not assumed to be built in."""
+    internal = internal_names(kernel, "TABLET") or set()
+    return [d.get("name") for d in devices.get("tablets", [])
+            if d.get("name") and printable(d["name"]) and matches(d["name"], internal)]
+
+
 def detect_internal_devices(devices, kernel):
     """Built-in keyboard and pointers, which face the table once folded back.
 
@@ -325,6 +360,10 @@ def chassis_folds():
     return read_text(CHASSIS_TYPE) in FOLDING_CHASSIS
 
 
+def sensor_proxy_installed():
+    return os.path.exists(SENSOR_PROXY_POLICY)
+
+
 def detect_tablet_sysfs():
     for path in TABLET_SYSFS:
         if os.access(path, os.R_OK):
@@ -357,10 +396,12 @@ def detect():
         "model": detect_model(),
         "panel": panel_name(detect_panel()),
         "touch": detect_touch_devices(devices, kernel),
+        "pen": detect_pens(devices, kernel),
         "internal": detect_internal_devices(devices, kernel),
         "tablet_switch": detect_tablet_switches(devices, kernel),
         "tablet_sysfs": detect_tablet_sysfs(),
         "chassis_folds": chassis_folds(),
+        "sensor_proxy": sensor_proxy_installed(),
     }
 
 
@@ -374,7 +415,7 @@ def panel_name(panel):
 # -------------------------------------------------------------------- state
 
 
-LIST_KEYS = ("touch", "internal", "tablet_switch")
+LIST_KEYS = ("touch", "pen", "internal", "tablet_switch")
 
 
 def read_conf():
@@ -396,12 +437,14 @@ def read_conf():
 
 
 def write_conf(conf):
-    """The Hyprland fragment reads this: plain key=value, since Lua has no JSON.
+    """The hardware found and the orientation last applied on purpose.
 
-    Returns whether anything changed, so callers can skip a pointless reload.
+    Plain key=value, the format versions before 1.4 shared with a Lua
+    fragment; kept so an upgrade reads the old file. Returns whether anything
+    changed.
     """
     lines = ["# Written by omarchy-tablet-mode. Edited by hand, it will be overwritten."]
-    for key in ("cli", "panel", "mode", "position", "scale", "transform", "tablet_sysfs"):
+    for key in ("panel", "mode", "position", "scale", "transform", "tablet_sysfs"):
         value = conf.get(key)
         if value is not None and value != "" and printable(str(value)):
             lines.append("%s=%s" % (key, value))
@@ -423,9 +466,8 @@ def refresh_conf(updates=None):
     """Re-detect hardware, keeping the orientation already recorded."""
     conf = read_conf()
     conf.update(detect())
-    conf.pop("model", None)
-    conf.pop("chassis_folds", None)
-    conf["cli"] = CLI
+    for key in ("model", "chassis_folds", "sensor_proxy", "cli"):
+        conf.pop(key, None)
     conf.update(updates or {})
     return conf, write_conf(conf)
 
@@ -517,6 +559,51 @@ def apply_input(is_folded, conf=None):
     return hypr_eval(statements)
 
 
+def bind_statements(conf, bind=True):
+    """Lua that binds every tablet mode switch to `fold`, first taking down
+    whatever binds an earlier daemon in this session left.
+
+    Hyprland receives SW_TABLET_MODE from libinput with no extra permissions,
+    on every vendor that reports it. Every switch detected is bound, and so
+    are the ones intel-hid and intel-vbtn only register when the switch first
+    changes: bound ahead, the fold that creates them is heard too. Locked, so
+    folding still switches the keyboard off at the lock screen.
+    """
+    registry = BINDS_GLOBAL
+    statements = [
+        "%s = %s or {}" % (registry, registry),
+        "for _, b in ipairs(%s) do pcall(function() b:unbind() end) end" % registry,
+        "%s = {}" % registry,
+    ]
+    if not bind:
+        return statements
+    command = "'%s'" % CLI.replace("'", "'\\''")
+    for name in dict.fromkeys(list(LAZY_TABLET_SWITCHES) + conf.get("tablet_switch", [])):
+        for state in ("on", "off"):
+            statements.append(
+                "table.insert(%s, hl.bind(%s, hl.dsp.exec_cmd(%s), { locked = true }))"
+                % (registry, lua_string("switch:%s:%s" % (state, name)),
+                   lua_string("%s fold %s" % (command, state))))
+    return statements
+
+
+def pen_values(settings):
+    """The pen options the panel sets, in the order of PEN_DEFAULTS."""
+    low, high = PEN_PRESSURE.get(settings.get("penPressure"), PEN_PRESSURE["normal"])
+    return (settings.get("hideCursorWithPen") is True, low, high)
+
+
+def pen_statements(values):
+    """Lua that applies pen options. They are global in Hyprland, for every
+    pen and tablet, which on a laptop is the one pen it has."""
+    hide, low, high = values
+    return [
+        "hl.config({ cursor = { hide_on_tablet = %s }, input = { tablettool = "
+        "{ pressure_range_min = %s, pressure_range_max = %s } } })"
+        % ("true" if hide else "false", low, high)
+    ]
+
+
 # ----------------------------------------------------------------- rotation
 
 
@@ -524,7 +611,7 @@ def apply_rotation(transform):
     """Turn the panel now through `hyprctl eval`, and record it for reloads.
 
     The live change needs no reload, so layer surfaces are left alone. The
-    record is what the Hyprland fragment replays when the config does reload,
+    record is what the daemon turns the panel back to after a config reload,
     since that rebuilds the monitor rules from the files.
     """
     panel = detect_panel()
@@ -652,6 +739,8 @@ def status(conf=None):
         "locked": locked(),
         "folded": folded(conf),
         "hasFoldSensor": has_fold_sensor(conf),
+        "hasPen": bool(conf.get("pen")),
+        "sensorInstalled": sensor_proxy_installed(),
     }
 
 
@@ -684,8 +773,11 @@ def run_daemon(mapping_override=None, all_positions=False):
     if not has_fold_sensor(conf):
         log("no fold sensor on this machine; rotating in every position")
 
+    # "wired" is whether the switch binds are in place, and "pen" the pen
+    # options last applied: what a freshly loaded config has is Hyprland's
+    # defaults, or whatever the person set there themselves.
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None}
+             "mapping": None, "wired": False, "pen": PEN_DEFAULTS}
     loop = GLib.MainLoop()
 
     def emit():
@@ -696,6 +788,11 @@ def run_daemon(mapping_override=None, all_positions=False):
     def sync():
         state["pending"] = False
         is_folded = folded(conf)
+        if not state["wired"]:
+            # On a fresh start and after every config reload there are no
+            # switch binds. The input state goes out again along with them.
+            state["wired"] = hypr_eval(bind_statements(conf))
+            state["folded"] = "unknown"
         if is_folded != state["folded"]:
             if is_folded is not None:
                 apply_input(is_folded, conf)
@@ -709,6 +806,12 @@ def run_daemon(mapping_override=None, all_positions=False):
             log("accelerometer mounting: %s" % mapping_name)
             state["mapping"] = mapping_name
         tablet_only = not (all_positions or settings.get("allPositions") is True)
+
+        # Only options the panel changed are written, so pen settings made in
+        # input.lua stand until someone picks something else here.
+        pen = pen_values(settings)
+        if pen != state["pen"] and hypr_eval(pen_statements(pen)):
+            state["pen"] = pen
 
         proxy = state["proxy"]
         value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
@@ -790,11 +893,11 @@ def run_daemon(mapping_override=None, all_positions=False):
     Gio.bus_watch_name(Gio.BusType.SYSTEM, bus_name, Gio.BusNameWatcherFlags.AUTO_START,
                        on_sensor_appeared, on_sensor_vanished)
 
-    # A config reload rebuilds the monitor rules from the files, and a tool
-    # whose rules load after the fragment (hyprmoncfg does) straightens the
-    # panel while the touchscreen stays turned. Rather than race such tools
-    # for the last line of hyprland.lua, the daemon hears the reload and turns
-    # the panel back. The same goes for the panel coming back on.
+    # A config reload rebuilds monitor rules, binds and options from the files:
+    # the panel straightens while the touchscreen stays turned, the switch
+    # binds are gone, and the pen options are whatever the files say. The
+    # daemon hears the reload and puts all of it back. The same goes for the
+    # panel coming back on.
     def watch_hyprland():
         runtime = os.environ.get("XDG_RUNTIME_DIR", "")
         signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
@@ -814,7 +917,11 @@ def run_daemon(mapping_override=None, all_positions=False):
                 line = None
             if line is None:
                 return  # the compositor is gone, and the shell with it
-            if line.split(">>", 1)[0] in ("configreloaded", "monitoradded", "monitoraddedv2"):
+            event = line.split(">>", 1)[0]
+            if event == "configreloaded":
+                state["wired"] = False
+                state["pen"] = PEN_DEFAULTS
+            if event in ("configreloaded", "monitoradded", "monitoraddedv2"):
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
 
@@ -876,73 +983,51 @@ def run_daemon(mapping_override=None, all_positions=False):
                 pass
         # A shell restart leaves things as they are, and the next daemon picks
         # up from there. A disable or removal must not leave the machine turned
-        # with its keyboard switched off.
+        # with its keyboard switched off, or with its binds and pen options.
         if not plugin_enabled():
-            restore()
+            restore(state["pen"])
     return 0
 
 
-def restore():
+def restore(pen=PEN_DEFAULTS):
     apply_rotation(0)
     apply_input(False)
+    hypr_eval(bind_statements({}, bind=False))
+    if pen != PEN_DEFAULTS:
+        hypr_eval(pen_statements(PEN_DEFAULTS))
 
 
 # -------------------------------------------------------------------- setup
 
 
-def setup(remove=False):
-    """Add (or drop) the load of our Hyprland fragment in hyprland.lua.
+def setup():
+    """Record the hardware, and take out the block versions before 1.4 added.
 
-    The block is delimited by markers so it can be found and removed cleanly,
-    and so a second run never duplicates it. It checks that the fragment exists
-    before loading it: `omarchy plugin remove` runs no plugin code, so the
-    block outlives the plugin, and a bare dofile would then break the config.
+    Those versions loaded a Hyprland fragment through a marked block in
+    hyprland.lua. The daemon now applies everything at runtime, so the block
+    only duplicates it: it is removed, markers and all, and nothing else in
+    the file is touched. The reload that follows drops what it had set up.
     """
-    fragment = os.path.join(PLUGIN_DIR, "hypr", "rotation.lua")
-    block = "\n".join([
-        MARKER_BEGIN,
-        "do local path = %s; local file = io.open(path, \"r\"); "
-        "if file then file:close(); dofile(path) end end" % lua_string(fragment),
-        MARKER_END,
-    ])
-
+    refresh_conf()
     try:
         with open(HYPRLAND_LUA) as handle:
             text = handle.read()
-    except OSError as error:
-        log("cannot read %s: %s" % (HYPRLAND_LUA, error))
-        return 1
-
-    conf_changed = False
-    if not remove:
-        _, conf_changed = refresh_conf()
+    except OSError:
+        return 0  # nothing to migrate
 
     pattern = re.compile(
         r"\n*" + re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END) + r"\n?",
         re.S,
     )
-    if remove:
-        updated = pattern.sub("\n", text).rstrip("\n") + "\n"
-    elif block in text:
-        # Already wired. It stays wherever it is, rather than being moved back
-        # to the end on every shell start and fighting other tools for the spot.
-        updated = text
-    else:
-        # At the end, so the fragment wins over monitors.lua.
-        updated = pattern.sub("\n", text).rstrip("\n") + "\n\n" + block + "\n"
-
-    if updated != text:
-        backup = HYPRLAND_LUA + ".tablet-mode-backup"
-        if not os.path.exists(backup):
-            with open(backup, "w") as handle:
-                handle.write(text)
-        tmp = HYPRLAND_LUA + ".tmp"
-        with open(tmp, "w") as handle:
-            handle.write(updated)
-        os.replace(tmp, HYPRLAND_LUA)
-
-    if updated != text or conf_changed:
-        subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
+    if not pattern.search(text):
+        return 0
+    updated = pattern.sub("\n", text).rstrip("\n") + "\n"
+    tmp = HYPRLAND_LUA + ".tmp"
+    with open(tmp, "w") as handle:
+        handle.write(updated)
+    os.replace(tmp, HYPRLAND_LUA)
+    log("removed the block earlier versions added to %s" % HYPRLAND_LUA)
+    subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
     return 0
 
 
@@ -1006,8 +1091,9 @@ def main():
     sub.add_parser("detect", help="print detected hardware")
     sub.add_parser("relayout", help="re-orient the split of two tiled windows")
 
-    setup_parser = sub.add_parser("setup", help="wire into hyprland.lua")
-    setup_parser.add_argument("--remove", action="store_true")
+    setup_parser = sub.add_parser("setup", help="record the hardware, drop the old hyprland.lua block")
+    # Once the way to take the block out by hand; now what setup always does.
+    setup_parser.add_argument("--remove", action="store_true", help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
@@ -1041,7 +1127,7 @@ def main():
         print(json.dumps(hardware, indent=2))
         return 0
     if args.command == "setup":
-        return setup(remove=args.remove)
+        return setup()
     return 2
 
 

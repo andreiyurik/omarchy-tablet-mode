@@ -247,6 +247,18 @@ class DetectionTest(CliTestCase):
         self.assertEqual(self.cli.detect_tablet_switches(self.devices, self.kernel),
                          ["ThinkPad Extra Buttons", "Intel HID switches"])
 
+    def test_only_a_built_in_pen_counts_as_the_pen(self):
+        kernel = self.kernel + [kernel_device("Wacom HID 5276 Pen",
+                                              ID_INTEGRATION="internal", ID_INPUT_TABLET="1")]
+        devices = dict(self.devices, tablets=self.devices["tablets"]
+                       + [{"name": "wacom-hid-5276-pen"}])
+        self.assertEqual(self.cli.detect_pens(devices, kernel), ["wacom-hid-5276-pen"])
+        self.assertEqual(self.cli.detect_pens(self.devices, self.kernel), [])
+
+    def test_without_udev_no_tablet_is_taken_for_a_built_in_pen(self):
+        kernel = [dict(d, props={}) for d in self.kernel]
+        self.assertEqual(self.cli.detect_pens(self.devices, kernel), [])
+
     def test_without_udev_names_are_the_fallback(self):
         kernel = [dict(d, props={}) for d in self.kernel]
         self.assertEqual(self.cli.detect_internal_devices(self.devices, kernel),
@@ -357,45 +369,110 @@ class RelayoutTest(CliTestCase):
         self.assertEqual(self.run_relayout(clients, layout="scrolling")[0], 0)
 
 
+class BindsTest(CliTestCase):
+    def test_every_switch_and_the_lazily_registered_intel_ones_are_bound(self):
+        lua = "\n".join(self.cli.bind_statements({"tablet_switch": ["ThinkPad Extra Buttons"]}))
+        for name in ("ThinkPad Extra Buttons", "Intel HID switches", "Intel Virtual Switches"):
+            for state in ("on", "off"):
+                self.assertIn('"switch:%s:%s"' % (state, name), lua)
+        self.assertEqual(lua.count("hl.bind("), 6)
+        self.assertIn("{ locked = true }", lua)
+
+    def test_a_switch_named_twice_is_bound_once(self):
+        lua = "\n".join(self.cli.bind_statements({"tablet_switch": ["Intel HID switches"]}))
+        self.assertEqual(lua.count('"switch:on:Intel HID switches"'), 1)
+
+    def test_the_binds_of_an_earlier_daemon_come_down_first(self):
+        statements = self.cli.bind_statements({"tablet_switch": []})
+        unbind = next(i for i, s in enumerate(statements) if ":unbind()" in s)
+        first_bind = next(i for i, s in enumerate(statements) if "hl.bind(" in s)
+        self.assertLess(unbind, first_bind)
+
+    def test_unbinding_alone_binds_nothing(self):
+        lua = "\n".join(self.cli.bind_statements({"tablet_switch": ["X"]}, bind=False))
+        self.assertIn(":unbind()", lua)
+        self.assertNotIn("hl.bind(", lua)
+
+    def test_the_cli_path_is_quoted_for_the_shell_and_for_lua(self):
+        with mock.patch.object(self.cli, "CLI", "/home/o'neil/bin/tablet mode"):
+            lua = "\n".join(self.cli.bind_statements({"tablet_switch": []}))
+        self.assertIn('hl.dsp.exec_cmd("\'/home/o\'\\\\\'\'neil/bin/tablet mode\' fold on")', lua)
+
+    def test_a_quote_in_a_switch_name_stays_inside_the_string(self):
+        lua = "\n".join(self.cli.bind_statements({"tablet_switch": ['Odd "Switch"']}))
+        self.assertIn('"switch:on:Odd \\"Switch\\""', lua)
+
+
+class PenTest(CliTestCase):
+    def test_nothing_chosen_is_hyprlands_defaults(self):
+        self.assertEqual(self.cli.pen_values({}), self.cli.PEN_DEFAULTS)
+        self.assertEqual(self.cli.pen_values({"penPressure": "normal"}), self.cli.PEN_DEFAULTS)
+
+    def test_presets_and_the_cursor(self):
+        self.assertEqual(self.cli.pen_values({"penPressure": "soft", "hideCursorWithPen": True}),
+                         (True, 0.0, 0.6))
+
+    def test_an_unknown_preset_leaves_the_range_alone(self):
+        self.assertEqual(self.cli.pen_values({"penPressure": "extreme"})[1:], (-1, -1))
+
+    def test_every_preset_is_a_range_libinput_accepts(self):
+        for name, (low, high) in self.cli.PEN_PRESSURE.items():
+            if (low, high) != (-1, -1):
+                self.assertTrue(0 <= low < high <= 1, name)
+
+    def test_the_options_are_written_as_lua(self):
+        self.assertEqual(self.cli.pen_statements((True, 0.15, 1.0)), [
+            "hl.config({ cursor = { hide_on_tablet = true }, input = { tablettool = "
+            "{ pressure_range_min = 0.15, pressure_range_max = 1.0 } } })"])
+
+
+class SensorProxyTest(CliTestCase):
+    def test_status_says_whether_iio_sensor_proxy_is_installed(self):
+        policy = os.path.join(self.home, "net.hadess.SensorProxy.conf")
+        with mock.patch.object(self.cli, "SENSOR_PROXY_POLICY", policy), \
+                mock.patch.object(self.cli, "hyprctl", return_value=[]):
+            self.assertIs(self.cli.status({})["sensorInstalled"], False)
+            self.write(policy, "<busconfig/>\n")
+            self.assertIs(self.cli.status({})["sensorInstalled"], True)
+
+
 class SetupTest(CliTestCase):
+    user_config = 'require("hypr.monitors")\n\n-- a line of their own\n'
+
     def setUp(self):
         super().setUp()
         self.lua = self.cli.HYPRLAND_LUA
-        self.write(self.lua, 'require("hypr.monitors")\n')
+        self.write(self.lua, self.user_config)
         for name, value in (("refresh_conf", mock.Mock(return_value=({}, False))),
-                            ("subprocess", mock.Mock())):
+                            ("subprocess", mock.Mock()), ("log", mock.Mock())):
             patcher = mock.patch.object(self.cli, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def test_adds_a_guarded_block_once(self):
+    def old_block(self):
+        return ("%s\ndo local path = \"/x/rotation.lua\"; dofile(path) end\n%s\n"
+                % (self.cli.MARKER_BEGIN, self.cli.MARKER_END))
+
+    def test_leaves_a_config_without_the_old_block_untouched(self):
         self.cli.setup()
+        self.assertEqual(self.read(self.lua), self.user_config)
+        self.assertFalse(self.cli.subprocess.run.called)
+
+    def test_takes_out_the_block_earlier_versions_added_and_nothing_else(self):
+        later = "\n-- [key-visualizer] a later tool\ndofile(\"/y.lua\")\n"
+        self.write(self.lua, self.user_config + "\n\n" + self.old_block() + later)
         self.cli.setup()
         text = self.read(self.lua)
-        self.assertEqual(text.count(self.cli.MARKER_BEGIN), 1)
-        self.assertIn("io.open(path", text)
-        self.assertTrue(os.path.exists(self.lua + ".tablet-mode-backup"))
+        self.assertNotIn(self.cli.MARKER_BEGIN, text)
+        self.assertNotIn("rotation.lua", text)
+        self.assertIn("-- a line of their own", text)
+        self.assertIn('dofile("/y.lua")', text)
+        self.assertTrue(self.cli.subprocess.run.called)
 
-    def test_replaces_the_old_unguarded_block(self):
-        self.write(self.lua, 'require("hypr.monitors")\n\n%s\ndofile("/x/rotation.lua")\n%s\n'
-                   % (self.cli.MARKER_BEGIN, self.cli.MARKER_END))
-        self.cli.setup()
-        text = self.read(self.lua)
-        self.assertNotIn('dofile("/x/rotation.lua")', text)
-        self.assertEqual(text.count(self.cli.MARKER_BEGIN), 1)
-
-    def test_leaves_a_wired_block_where_it_is(self):
-        self.cli.setup()
-        with open(self.lua, "a") as handle:
-            handle.write("-- a later tool's block\n")
-        before = self.read(self.lua)
-        self.cli.setup()
-        self.assertEqual(self.read(self.lua), before)
-
-    def test_remove_restores_the_file(self):
-        self.cli.setup()
-        self.cli.setup(remove=True)
-        self.assertEqual(self.read(self.lua), 'require("hypr.monitors")\n')
+    def test_a_missing_hyprland_lua_is_not_an_error(self):
+        os.remove(self.lua)
+        self.assertEqual(self.cli.setup(), 0)
+        self.assertFalse(os.path.exists(self.lua))
 
 
 if __name__ == "__main__":
