@@ -132,7 +132,7 @@ works and is not in the table, please file a
 
 ## The panel
 
-<img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, buttons to turn the screen left, lock it and turn it right, a switch to rotate as a laptop too, pen settings, and the accelerometer mounting.">
+<img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, buttons to turn the screen left, lock it and turn it right, a switch to rotate as a laptop too, pen settings, the on-screen keyboard, and the accelerometer mounting.">
 
 Tap the rotation icon in the bar. The panel shows whether the machine is a
 laptop or a tablet and what the screen is doing, and holds everything you might
