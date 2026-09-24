@@ -452,6 +452,50 @@ class KeyboardTest(CliTestCase):
         self.assertEqual(self.cli.keyboard_command(keyboard, "toggle"),
                          ["omarchy-shell", "onscreen-keyboard", "toggle"])
 
+    def run_with_monitors(self, monitors, **kwargs):
+        self.enable("io.github.abdxdev.onscreen-keyboard")
+        calls = []
+
+        def hyprctl(*args, parse_json=True):
+            calls.append(args)
+            return monitors if args[0] == "monitors" else ""
+
+        with mock.patch.object(self.cli, "hyprctl", side_effect=hyprctl), \
+                mock.patch.object(self.cli.subprocess, "Popen") as popen:
+            self.assertTrue(self.cli.run_keyboard("show", **kwargs))
+        self.assertEqual(popen.call_args[0][0][:3], ["omarchy-shell", "shell", "summon"])
+        return [c for c in calls if c[0] == "dispatch"]
+
+    def test_a_fold_moves_the_focus_to_the_panel_before_the_keyboard_opens(self):
+        monitors = [{"name": "HDMI-A-1", "focused": True},
+                    {"name": "eDP-1", "focused": False, "disabled": False}]
+        self.assertEqual(self.run_with_monitors(monitors, on_panel=True),
+                         [("dispatch", 'hl.dsp.focus({ monitor = "eDP-1" })')])
+
+    def test_a_focused_panel_is_left_as_it_is(self):
+        monitors = [{"name": "eDP-1", "focused": True, "disabled": False}]
+        self.assertEqual(self.run_with_monitors(monitors, on_panel=True), [])
+
+    def test_opening_by_hand_does_not_move_the_focus(self):
+        monitors = [{"name": "HDMI-A-1", "focused": True}, {"name": "eDP-1", "focused": False}]
+        self.assertEqual(self.run_with_monitors(monitors), [])
+
+    def test_folding_brings_the_keyboard_up_and_opening_puts_it_away(self):
+        on_lid = self.cli.keyboard_on_lid
+        self.assertEqual(on_lid(False, True, wanted=True, shown=False), "show")
+        self.assertEqual(on_lid(True, False, wanted=True, shown=True), "hide")
+
+    def test_nothing_happens_without_a_change_of_the_lid(self):
+        on_lid = self.cli.keyboard_on_lid
+        self.assertIsNone(on_lid(None, True, wanted=True, shown=False))  # first reading
+        self.assertIsNone(on_lid(True, True, wanted=True, shown=True))
+
+    def test_a_keyboard_opened_by_hand_stays_when_the_machine_opens(self):
+        self.assertIsNone(self.cli.keyboard_on_lid(True, False, wanted=True, shown=False))
+
+    def test_folding_leaves_the_keyboard_alone_when_not_wanted(self):
+        self.assertIsNone(self.cli.keyboard_on_lid(False, True, wanted=False, shown=False))
+
     def test_status_names_the_keyboard(self):
         self.enable("io.github.frostmute.tablet-keyboard")
         with mock.patch.object(self.cli, "hyprctl", return_value=[]):
