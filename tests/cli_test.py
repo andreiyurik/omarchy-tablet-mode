@@ -426,6 +426,38 @@ class PenTest(CliTestCase):
             "{ pressure_range_min = 0.15, pressure_range_max = 1.0 } } })"])
 
 
+class KeyboardTest(CliTestCase):
+    def enable(self, *ids):
+        entries = ", ".join('{"id": "%s"}' % i for i in ids)
+        self.write(self.cli.SHELL_JSON, '{"bar": {"layout": {"right": [%s]}}}' % entries)
+
+    def test_no_keyboard_plugin_means_none(self):
+        self.enable("andreiyurik.tablet-mode")
+        self.assertIsNone(self.cli.find_keyboard())
+        self.assertFalse(self.cli.run_keyboard("show"))
+
+    def test_the_first_known_keyboard_enabled_is_used(self):
+        self.enable("io.github.frostmute.tablet-keyboard", "io.github.abdxdev.onscreen-keyboard")
+        self.assertEqual(self.cli.find_keyboard()[0], "io.github.abdxdev.onscreen-keyboard")
+
+    def test_a_panel_keyboard_is_summoned_and_hidden_through_the_shell(self):
+        keyboard = next(k for k in self.cli.KEYBOARDS if k[0].endswith("abdxdev.onscreen-keyboard"))
+        self.assertEqual(self.cli.keyboard_command(keyboard, "show"),
+                         ["omarchy-shell", "shell", "summon", keyboard[0], "{}"])
+        self.assertEqual(self.cli.keyboard_command(keyboard, "hide"),
+                         ["omarchy-shell", "shell", "hide", keyboard[0]])
+
+    def test_a_keyboard_with_its_own_ipc_target_is_asked_directly(self):
+        keyboard = next(k for k in self.cli.KEYBOARDS if k[0].endswith("mtolhuys.onscreen-keyboard"))
+        self.assertEqual(self.cli.keyboard_command(keyboard, "toggle"),
+                         ["omarchy-shell", "onscreen-keyboard", "toggle"])
+
+    def test_status_names_the_keyboard(self):
+        self.enable("io.github.frostmute.tablet-keyboard")
+        with mock.patch.object(self.cli, "hyprctl", return_value=[]):
+            self.assertEqual(self.cli.status({})["keyboard"], "Omaqwerty")
+
+
 class SensorProxyTest(CliTestCase):
     def test_status_says_whether_iio_sensor_proxy_is_installed(self):
         policy = os.path.join(self.home, "net.hadess.SensorProxy.conf")

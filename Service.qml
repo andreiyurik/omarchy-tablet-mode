@@ -31,6 +31,8 @@ Item {
   // Whether iio-sensor-proxy is installed at all: without it no sensor ever
   // appears, and the fix is an install rather than a missing accelerometer.
   property bool sensorInstalled: true
+  // The name of the on-screen keyboard plugin folding brings up, or "".
+  property string keyboard: ""
 
   readonly property string cli: decodeURIComponent(
     Qt.resolvedUrl("bin/omarchy-tablet-mode").toString().replace("file://", ""))
@@ -42,6 +44,11 @@ Item {
   function toggleLock() {
     lockProc.command = [cli, "lock", "toggle"]
     lockProc.running = true
+  }
+
+  function toggleKeyboard() {
+    keyboardProc.command = [cli, "keyboard", "toggle"]
+    keyboardProc.running = true
   }
 
   function rotate(position) {
@@ -64,6 +71,7 @@ Item {
     root.hasPen = data.hasPen === true
     if (data.sensor !== undefined) root.sensorAvailable = data.sensor === true
     if (data.sensorInstalled !== undefined) root.sensorInstalled = data.sensorInstalled === true
+    root.keyboard = data.keyboard || ""
   }
 
   Component.onCompleted: {
@@ -112,6 +120,10 @@ Item {
   Process {
     id: lockProc
     onExited: root.refresh()
+  }
+
+  Process {
+    id: keyboardProc
   }
 
   Process {

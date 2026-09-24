@@ -6,7 +6,7 @@
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and a touch-friendly bar panel holds the rotation lock and pen settings",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and a touch-friendly bar panel holds the rotation lock and pen settings. Brings up an on-screen keyboard plugin when folded",
   "kinds": [
     "service",
     "bar-widget"
@@ -26,7 +26,8 @@
       "allPositions": false,
       "hideInLaptopMode": false,
       "hideCursorWithPen": false,
-      "penPressure": "normal"
+      "penPressure": "normal",
+      "keyboardOnFold": true
     },
     "schema": [
       {
@@ -75,6 +76,13 @@
         ],
         "defaultValue": "normal",
         "description": "Soft reaches full pressure well before pressing hard; firm ignores the lightest touch. Normal leaves the pen's own range, and whatever input.lua sets, alone."
+      },
+      {
+        "key": "keyboardOnFold",
+        "type": "boolean",
+        "label": "Show the on-screen keyboard when folded",
+        "defaultValue": true,
+        "description": "With an on-screen keyboard plugin enabled (On-Screen Keyboard or Omaqwerty from plugins.omarchy.org), folding the machine brings it up and opening it puts it away again. A keyboard opened by hand is left alone."
       }
     ]
   }
