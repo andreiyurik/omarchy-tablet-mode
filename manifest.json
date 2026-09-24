@@ -2,29 +2,31 @@
   "schemaVersion": 1,
   "id": "andreiyurik.tablet-mode",
   "name": "Tablet Mode",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and the bar gets a rotation lock",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded, and a touch-friendly bar panel holds the rotation lock and pen settings",
   "kinds": [
     "service",
     "bar-widget"
   ],
   "entryPoints": {
     "service": "Service.qml",
-    "barWidget": "RotationLock.qml"
+    "barWidget": "TabletPanel.qml"
   },
   "barWidget": {
-    "displayName": "Rotation Lock",
-    "description": "Freezes the screen orientation, the way a tablet's rotation lock does. Click to lock, middle-click to rotate by hand.",
+    "displayName": "Tablet Mode",
+    "description": "Tap for the rotation lock, turning the screen by hand, and pen settings. Middle-click turns the screen.",
     "category": "Hardware",
     "defaultSection": "right",
     "allowMultiple": false,
     "defaults": {
       "mapping": "auto",
       "allPositions": false,
-      "hideInLaptopMode": false
+      "hideInLaptopMode": false,
+      "hideCursorWithPen": false,
+      "penPressure": "normal"
     },
     "schema": [
       {
@@ -53,7 +55,26 @@
         "type": "boolean",
         "label": "Hide the icon in laptop mode",
         "defaultValue": false,
-        "description": "The lock has nothing to do while the machine is open and the screen is not rotating, so this keeps it out of the bar until it does. It reappears the moment the machine is folded, or while a lock is being held."
+        "description": "The button has little to do while the machine is open and the screen is not rotating, so this keeps it out of the bar until it does. It reappears the moment the machine is folded, or while a lock is being held."
+      },
+      {
+        "key": "hideCursorWithPen",
+        "type": "boolean",
+        "label": "Hide the cursor while writing",
+        "defaultValue": false,
+        "description": "Hides the pointer while the pen is near the screen, until a mouse or touchpad moves. Applies to every pen, which on a laptop is the one it has."
+      },
+      {
+        "key": "penPressure",
+        "type": "enum",
+        "label": "Pen pressure",
+        "options": [
+          "soft",
+          "normal",
+          "firm"
+        ],
+        "defaultValue": "normal",
+        "description": "Soft reaches full pressure well before pressing hard; firm ignores the lightest touch. Normal leaves the pen's own range, and whatever input.lua sets, alone."
       }
     ]
   }

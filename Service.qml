@@ -26,7 +26,11 @@ Item {
   property string orientation: "normal"
   property bool folded: false
   property bool hasFoldSensor: true
+  property bool hasPen: false
   property bool sensorAvailable: true
+  // Whether iio-sensor-proxy is installed at all: without it no sensor ever
+  // appears, and the fix is an install rather than a missing accelerometer.
+  property bool sensorInstalled: true
 
   readonly property string cli: decodeURIComponent(
     Qt.resolvedUrl("bin/omarchy-tablet-mode").toString().replace("file://", ""))
@@ -57,12 +61,14 @@ Item {
     root.orientation = data.orientation || "normal"
     root.folded = data.folded === true
     root.hasFoldSensor = data.hasFoldSensor === true
+    root.hasPen = data.hasPen === true
     if (data.sensor !== undefined) root.sensorAvailable = data.sensor === true
+    if (data.sensorInstalled !== undefined) root.sensorInstalled = data.sensorInstalled === true
   }
 
   Component.onCompleted: {
-    // Idempotent: it re-detects hardware, rewrites its own marked block in
-    // hyprland.lua only when missing, and reloads only when something changed.
+    // Records the hardware, and on an upgrade takes out the hyprland.lua
+    // block versions before 1.4 added. The daemon applies everything else.
     setupProc.running = true
   }
 
