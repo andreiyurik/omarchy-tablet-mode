@@ -418,6 +418,29 @@ class KeyboardTest(CliTestCase):
             self.assertEqual(self.cli.status({})["keyboard"], "Omaqwerty")
 
 
+class LockTest(CliTestCase):
+    def test_a_lock_holds_in_its_own_session(self):
+        self.cli.set_lock(True)
+        self.assertTrue(self.cli.locked())
+        self.cli.set_lock(False)
+        self.assertFalse(self.cli.locked())
+
+    def test_a_lock_from_an_earlier_session_does_not(self):
+        self.write(self.cli.LOCK_FILE, "sig-before\n")
+        self.assertFalse(self.cli.locked())
+
+    def test_a_lock_file_from_before_1_6_does_not(self):
+        self.write(self.cli.LOCK_FILE, "")
+        self.assertFalse(self.cli.locked())
+
+    def test_only_opening_a_folded_machine_lets_go(self):
+        released = self.cli.released_by_opening
+        self.assertTrue(released(True, False))
+        self.assertFalse(released(False, True))
+        self.assertFalse(released("unknown", False))  # the daemon's first reading
+        self.assertFalse(released(None, False))
+
+
 class SensorProxyTest(CliTestCase):
     def test_status_says_whether_iio_sensor_proxy_is_installed(self):
         policy = os.path.join(self.home, "net.hadess.SensorProxy.conf")

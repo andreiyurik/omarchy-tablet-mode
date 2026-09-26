@@ -533,7 +533,31 @@ def run_keyboard(action, keyboard=None, on_panel=False):
 
 
 def locked():
-    return os.path.exists(LOCK_FILE)
+    """Whether the rotation is locked in this session.
+
+    The lock is tagged with the Hyprland instance, like a fold event: a
+    portrait lock left from before a reboot must not turn a laptop sideways
+    at the next login.
+    """
+    return read_text(LOCK_FILE) == os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+
+
+def set_lock(on):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    if on:
+        with open(LOCK_FILE, "w") as handle:
+            handle.write(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "") + "\n")
+    else:
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
+
+
+def released_by_opening(before, now):
+    """Whether a change of the lid lets go of the lock: opening a folded
+    machine makes it a laptop again, and a laptop's screen stands upright."""
+    return before is True and now is False
 
 
 def fold_event():
@@ -757,6 +781,9 @@ def run_daemon(mapping_override=None):
             state["wired"] = hypr_eval(bind_statements(conf))
             state["folded"] = "unknown"
         if is_folded != state["folded"]:
+            if released_by_opening(state["folded"], is_folded) and locked():
+                set_lock(False)
+                log("unfolded: rotation lock released")
             if is_folded is not None:
                 apply_input(is_folded, conf)
                 log("folded: following the sensor, built-in input off" if is_folded
@@ -964,16 +991,9 @@ def restore():
 
 
 def cmd_lock(action):
-    os.makedirs(STATE_DIR, exist_ok=True)
     if action == "toggle":
         action = "off" if locked() else "on"
-    if action == "on":
-        open(LOCK_FILE, "w").close()
-    else:
-        try:
-            os.remove(LOCK_FILE)
-        except OSError:
-            pass
+    set_lock(action == "on")
     print("locked" if locked() else "unlocked")
     return 0
 

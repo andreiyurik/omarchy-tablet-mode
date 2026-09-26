@@ -142,7 +142,8 @@ reached for:
   [Typing while folded](#typing-while-folded).
 - **Left, Lock, Right.** Lock freezes the orientation, the way a tablet's
   rotation lock does. Turning the screen by hand locks it too, so the sensor
-  does not turn it straight back; turning it back to landscape lets go.
+  does not turn it straight back. Turning it back to landscape lets go, and so
+  does opening the machine into a laptop or logging out.
 
 **Settings**, at the bottom, opens what is set once, if ever:
 
