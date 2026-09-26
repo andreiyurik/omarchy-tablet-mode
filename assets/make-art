@@ -33,7 +33,7 @@ THEMES = {
 CARDS = [
     ("laptop", "LAPTOP", ["Keyboard on", "Screen stays put"]),
     ("tent", "TENT", ["Turns upright", "Touch on target"]),
-    ("tablet", "TABLET", ["Keyboard off", "Pen follows"]),
+    ("tablet", "TABLET", ["Keyboard off", "On-screen keys"]),
 ]
 
 SLAB = 16      # thickness of each half of the laptop
@@ -212,7 +212,7 @@ def main():
         f'<text x="152" y="99" font-family="{FONT}" font-size="52" font-weight="800" fill="{c["text"]}">'
         f'Tablet Mode<tspan dx="16" font-weight="400" fill="{c["muted"]}">for Omarchy</tspan></text>',
         f'<text x="60" y="162" font-family="{FONT}" font-size="26" fill="{c["muted"]}">'
-        'Fold your 360° laptop into a tablet. Everything else follows.</text>',
+        'For 2-in-1 laptops that fold back 360°. Fold it, and Omarchy follows.</text>',
     ]
     preview = os.path.join(ROOT, "assets", ".preview.svg")
     with open(preview, "w") as handle:

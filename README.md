@@ -5,8 +5,14 @@
 <h1 align="center">Tablet Mode for Omarchy</h1>
 
 <p align="center">
-  <b>Fold your 360° laptop into a tablet. Everything else follows.</b><br>
-  Auto-rotation, touch and pen that keep up, a keyboard that goes quiet.
+  <b>For 2-in-1 laptops whose screen folds back 360°.</b><br>
+  Fold it into a tablet and Omarchy follows: the screen turns with you, touch
+  stays on target, and the keyboard underneath goes quiet.
+</p>
+
+<p align="center">
+  <sub>ThinkPad Yoga · HP Spectre and Envy x360 · Dell XPS and Latitude 2-in-1 ·
+  Lenovo Yoga · ASUS Zenbook Flip — <a href="#will-it-work-on-my-laptop">will it work on mine?</a></sub>
 </p>
 
 <p align="center">
@@ -18,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and the pen follows the screen.">
+  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard comes up.">
 </picture>
 
 ## The problem
