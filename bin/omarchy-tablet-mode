@@ -58,8 +58,9 @@ SENSOR_PROXY_POLICY = "/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf"
 # On-screen keyboards from the Omarchy plugin directory, in order of
 # preference: plugin id, name, and the omarchy-shell target and methods that
 # show, hide and toggle it. Two are plain panels, opened and closed through the
-# shell's own summon and hide; one has an IPC target of its own. Folding shows
-# the first one enabled, so a folded machine can still be typed on.
+# shell's own summon and hide; one has an IPC target of its own. The first one
+# enabled is the one the panel's button opens, and opening the machine puts
+# it away.
 KEYBOARDS = [
     ("io.github.mtolhuys.onscreen-keyboard", "On-Screen Keyboard",
      {"show": ["onscreen-keyboard", "show"], "hide": ["onscreen-keyboard", "hide"],
@@ -501,22 +502,6 @@ def keyboard_command(keyboard, action):
     return ["omarchy-shell", "shell", method, plugin_id] + ([] if action == "hide" else ["{}"])
 
 
-def keyboard_on_lid(before, now, wanted, shown):
-    """What a change of the lid does to the on-screen keyboard: "show",
-    "hide" or None.
-
-    It comes up when the machine folds, if wanted, and goes away when it
-    opens -- only if the fold brought it up, so a keyboard opened by hand as
-    a laptop stays. Only an actual change counts: `before` is None for the
-    first reading after a start, which says nothing new.
-    """
-    if before is None or now is None or before == now:
-        return None
-    if now:
-        return "show" if wanted else None
-    return "hide" if shown else None
-
-
 def run_keyboard(action, keyboard=None, on_panel=False):
     """Show, hide or toggle the on-screen keyboard, if there is one.
 
@@ -564,10 +549,25 @@ def set_lock(on):
             pass
 
 
-def released_by_opening(before, now):
-    """Whether a change of the lid lets go of the lock: opening a folded
-    machine makes it a laptop again, and a laptop's screen stands upright."""
+def opened(before, now):
+    """Whether a change of the lid opens a folded machine into a laptop.
+
+    Only an actual change from folded counts: the daemon's first reading
+    after a start or a reload says nothing new.
+    """
     return before is True and now is False
+
+
+def on_opened():
+    """A laptop again: its screen stands upright and its own keyboard is back.
+
+    The lock goes, and so does the on-screen keyboard, however it was opened;
+    hiding one that is not showing does nothing.
+    """
+    if locked():
+        set_lock(False)
+        log("unfolded: rotation lock released")
+    run_keyboard("hide")
 
 
 def fold_event():
@@ -771,7 +771,7 @@ def run_daemon(mapping_override=None):
     # "wired" is whether the switch binds are in place. A freshly loaded
     # config has none.
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None, "wired": False, "lid": None, "keyboard": False}
+             "mapping": None, "wired": False}
     loop = GLib.MainLoop()
 
     def emit():
@@ -788,9 +788,8 @@ def run_daemon(mapping_override=None):
             state["wired"] = hypr_eval(bind_statements(conf))
             state["folded"] = "unknown"
         if is_folded != state["folded"]:
-            if released_by_opening(state["folded"], is_folded) and locked():
-                set_lock(False)
-                log("unfolded: rotation lock released")
+            if opened(state["folded"], is_folded):
+                on_opened()
             if is_folded is not None:
                 apply_input(is_folded, conf)
                 log("folded: following the sensor, built-in input off" if is_folded
@@ -798,17 +797,6 @@ def run_daemon(mapping_override=None):
             state["folded"] = is_folded
 
         settings = plugin_entry() or {}
-
-        if isinstance(is_folded, bool):
-            action = keyboard_on_lid(state["lid"], is_folded,
-                                     settings.get("keyboardOnFold", True) is not False,
-                                     state["keyboard"])
-            if action == "show":
-                state["keyboard"] = run_keyboard("show", on_panel=True)
-            elif action == "hide":
-                run_keyboard("hide")
-                state["keyboard"] = False
-            state["lid"] = is_folded
         mapping_name = resolve_mapping(mapping_override or settings.get("mapping"))
         if mapping_name != state["mapping"]:
             log("accelerometer mounting: %s" % mapping_name)

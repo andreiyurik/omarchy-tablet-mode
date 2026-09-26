@@ -402,21 +402,13 @@ class KeyboardTest(CliTestCase):
     def test_hiding_the_keyboard_moves_no_focus(self):
         self.assertFalse(self.run_command("hide", True))
 
-    def test_folding_brings_the_keyboard_up_and_opening_puts_it_away(self):
-        on_lid = self.cli.keyboard_on_lid
-        self.assertEqual(on_lid(False, True, wanted=True, shown=False), "show")
-        self.assertEqual(on_lid(True, False, wanted=True, shown=True), "hide")
-
-    def test_nothing_happens_without_a_change_of_the_lid(self):
-        on_lid = self.cli.keyboard_on_lid
-        self.assertIsNone(on_lid(None, True, wanted=True, shown=False))  # first reading
-        self.assertIsNone(on_lid(True, True, wanted=True, shown=True))
-
-    def test_a_keyboard_opened_by_hand_stays_when_the_machine_opens(self):
-        self.assertIsNone(self.cli.keyboard_on_lid(True, False, wanted=True, shown=False))
-
-    def test_folding_leaves_the_keyboard_alone_when_not_wanted(self):
-        self.assertIsNone(self.cli.keyboard_on_lid(False, True, wanted=False, shown=False))
+    def test_opening_the_machine_puts_the_keyboard_away_and_lets_go_of_the_lock(self):
+        self.cli.set_lock(True)
+        with mock.patch.object(self.cli, "run_keyboard") as run, \
+                mock.patch.object(self.cli, "log"):
+            self.cli.on_opened()
+        run.assert_called_once_with("hide")
+        self.assertFalse(self.cli.locked())
 
     def test_status_names_the_keyboard(self):
         self.enable("io.github.frostmute.tablet-keyboard")
@@ -439,8 +431,8 @@ class LockTest(CliTestCase):
         self.write(self.cli.LOCK_FILE, "")
         self.assertFalse(self.cli.locked())
 
-    def test_only_opening_a_folded_machine_lets_go(self):
-        released = self.cli.released_by_opening
+    def test_only_opening_a_folded_machine_counts(self):
+        released = self.cli.opened
         self.assertTrue(released(True, False))
         self.assertFalse(released(False, True))
         self.assertFalse(released("unknown", False))  # the daemon's first reading

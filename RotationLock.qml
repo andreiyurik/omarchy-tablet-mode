@@ -42,7 +42,6 @@ Panel {
   // The daemon reads these from shell.json itself and follows the file, so
   // saving one is all it takes to apply it.
   readonly property string mapping: setting("mapping", "standard")
-  readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
   function save(name, value) {
     var change = {}
@@ -78,7 +77,6 @@ Panel {
     if (keyboard !== "") list.push({ id: "keyboardToggle", cells: 1 })
     list.push({ id: "screen", cells: 3 }, { id: "settings", cells: 1 })
     if (settingsShown) {
-      if (keyboard !== "") list.push({ id: "keyboardOnFold", cells: 1 })
       list.push({ id: "mapping", cells: mappingOptions.length })
     }
     return list
@@ -117,7 +115,6 @@ Panel {
     var row = rows[cursorRow].id
     if (row === "screen") screenActions[cursorCell].run()
     else if (row === "settings") settingsShown = !settingsShown
-    else if (row === "keyboardOnFold") save("keyboardOnFold", !keyboardOnFold)
     else if (row === "keyboardToggle") { if (service) service.toggleKeyboard() }
     else if (row === "mapping") save("mapping", mappingOptions[cursorCell].value)
   }
@@ -316,7 +313,7 @@ Panel {
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: "For typing while folded, add an on-screen keyboard from plugins.omarchy.org, "
-            + "such as On-Screen Keyboard or Omaqwerty. It comes up as you fold the machine."
+            + "such as On-Screen Keyboard or Omaqwerty. Opening the machine puts it away."
           color: root.bar.foreground
           opacity: 0.6
           font.family: root.bar.fontFamily
@@ -342,19 +339,6 @@ Panel {
           visible: root.settingsShown
           width: parent.width
           spacing: Style.space(10)
-
-          Toggle {
-            visible: root.keyboard !== ""
-            width: parent.width
-            label: "Keyboard when folded"
-            description: root.keyboard + " comes up as you fold the machine, and goes away as you open it."
-            checked: root.keyboardOnFold
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            hasCursor: root.cursorOn("keyboardOnFold")
-            onClicked: root.save("keyboardOnFold", !root.keyboardOnFold)
-            onHovered: function(h) { if (h) root.point("keyboardOnFold") }
-          }
 
           PanelSectionHeader {
             text: "SCREEN TURNS THE WRONG WAY?"

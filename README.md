@@ -24,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard comes up.">
+  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard is a tap away.">
 </picture>
 
 ## The problem
@@ -69,7 +69,7 @@ compositor only, and puts its changes back after every config reload.
 | Touch or draw | Taps land off to the side | Touch and pen follow the screen |
 | Work with it on your knees | — | Nothing flips until you fold it |
 | Read in bed | The screen spins as you shift | Lock it from the bar |
-| Need to type while folded | No keys to reach | An on-screen keyboard comes up |
+| Need to type while folded | No keys to reach | An on-screen keyboard a tap away |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
 ## Why it feels native
@@ -157,7 +157,6 @@ reached for:
 
 **Settings**, at the bottom, opens what is set once, if ever:
 
-- **Keyboard when folded.** Whether folding brings up the on-screen keyboard.
 - **Screen turns the wrong way?** The accelerometer mounting; see below.
 
 With a mouse, a middle click on the icon turns the screen without opening
@@ -201,20 +200,25 @@ else about the pen is Hyprland's to configure, in its `input.tablet` and
 
 Folded, the built-in keyboard is off and faces the table. Tablet Mode does not
 draw a keyboard of its own; it works with the on-screen keyboards already in
-the [Omarchy plugin directory](https://plugins.omarchy.org/). Enable one, and
-folding the machine brings it up on the laptop's panel, while opening it puts
-the keyboard away again — only if folding is what brought it up, so a keyboard
-you opened yourself stays.
+the [Omarchy plugin directory](https://plugins.omarchy.org/). Enable one and
+keep its icon next to Tablet Mode's in the bar: a tap on it brings the
+keyboard up, and opening the machine puts it away again, since a laptop has
+its own keys back.
+
+Folding does not bring the keyboard up by itself. A folded machine is mostly
+for reading, watching and drawing, and a keyboard over half the screen every
+time would only be in the way; the keyboards here cannot tell when a text
+field has the focus, which is when a phone or an iPad shows one.
 
 | Keyboard | Plugin id | Status |
 |---|---|---|
-| [On-Screen Keyboard](https://github.com/abdxdev/omarchy-onscreen-keyboard) by abdxdev | `io.github.abdxdev.onscreen-keyboard` | **Tested**: comes up on the panel and goes away |
+| [On-Screen Keyboard](https://github.com/abdxdev/omarchy-onscreen-keyboard) by abdxdev | `io.github.abdxdev.onscreen-keyboard` | **Tested**: opens on the panel and goes away |
 | [Omaqwerty](https://github.com/frostmute/omarchy-omaqwerty) | `io.github.frostmute.tablet-keyboard` | Expected to work: opened the same way |
 | [On-Screen Keyboard](https://github.com/mtolhuys/omarchy-onscreen-keyboard) by mtolhuys | `io.github.mtolhuys.onscreen-keyboard` | Expected to work: through its documented `omarchy-shell onscreen-keyboard` commands |
 
-With more than one enabled, the first in this table is used. **Keyboard when
-folded**, under the panel's **Settings**, turns the behavior off. The panel's
-**Keyboard** button shows or hides it by hand, as does:
+With more than one enabled, the first in this table is used. The panel's
+**Keyboard** button, a bigger target than a bar icon, shows or hides it too,
+as does:
 
 ```bash
 ~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode keyboard toggle

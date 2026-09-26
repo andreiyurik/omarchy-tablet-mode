@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "andreiyurik.tablet-mode",
   "name": "Tablet Mode",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded and an on-screen keyboard plugin comes up. The bar button locks the rotation and shows the keyboard.",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, and the built-in keyboard goes quiet while folded. The bar button locks the rotation and opens an on-screen keyboard plugin, which goes away when you open the machine.",
   "kinds": [
     "service",
     "bar-widget"
@@ -22,8 +22,7 @@
     "defaultSection": "right",
     "allowMultiple": false,
     "defaults": {
-      "mapping": "standard",
-      "keyboardOnFold": true
+      "mapping": "standard"
     },
     "schema": [
       {
@@ -38,13 +37,6 @@
         ],
         "defaultValue": "standard",
         "description": "How the accelerometer is mounted. Standard is right for almost every machine. If the screen turns the wrong way, pick the pair that comes out mirrored: portrait-swapped for the two upright positions, landscape-swapped for the two flat ones, rotated-180 when everything is upside down."
-      },
-      {
-        "key": "keyboardOnFold",
-        "type": "boolean",
-        "label": "Keyboard when folded",
-        "defaultValue": true,
-        "description": "With an on-screen keyboard plugin enabled (On-Screen Keyboard or Omaqwerty from plugins.omarchy.org), folding the machine brings it up and opening it puts it away again. A keyboard opened by hand is left alone."
       }
     ]
   }
