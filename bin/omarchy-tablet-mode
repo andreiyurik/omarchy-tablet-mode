@@ -19,7 +19,6 @@ Subcommands:
   fold      record a fold switch event: on|off (Hyprland's switch binds run this)
   keyboard  show or hide the on-screen keyboard plugin: show|hide|toggle
   status    report state as JSON, for the bar widget
-  relayout  re-orient the split of two tiled windows on the panel
   setup     record the hardware, and drop the hyprland.lua block of versions before 1.4
   detect    print detected hardware, for bug reports
 """
@@ -31,7 +30,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 
 PLUGIN_ID = "andreiyurik.tablet-mode"
 CLI = os.path.abspath(__file__)
@@ -669,7 +667,6 @@ def apply_rotation(transform):
         "transform": transform,
     })
 
-    was_portrait = int(panel.get("transform", 0)) % 2 == 1
     if int(panel.get("transform", 0)) == transform:
         return 0
 
@@ -687,68 +684,7 @@ def apply_rotation(transform):
     ]
     if not hypr_eval(statements):
         return 1
-
-    # Only a quarter turn changes which axis is the long one.
-    if (transform % 2 == 1) != was_portrait:
-        # Wait for the transform to land before reading window boxes, or the
-        # pre-rotation layout is what gets re-oriented.
-        for _ in range(50):
-            if int((detect_panel() or {}).get("transform", -1)) == transform:
-                break
-            time.sleep(0.02)
-        relayout()
     return 0
-
-
-def relayout():
-    """Re-orient the split between two tiled windows after the panel turned.
-
-    Hyprland recalculates window geometry on rotation, but it does not
-    re-orient the dwindle tree: two windows side by side on a wide screen stay
-    side by side on a tall one, as a pair of unreadably narrow columns.
-
-    Only exactly two windows are handled. Then they are the two halves of the
-    root split and a single `togglesplit` is certainly right. With more, which
-    windows share a split cannot be read reliably from their boxes, and a
-    guess flips the wrong one.
-    """
-    panel = detect_panel()
-    if not panel:
-        return 0
-
-    workspace_id = (panel.get("activeWorkspace") or {}).get("id")
-    workspace = next((w for w in hyprctl("workspaces") or [] if w.get("id") == workspace_id), {})
-    if workspace.get("tiledLayout") != "dwindle":
-        return 0
-
-    tiled = [
-        c for c in hyprctl("clients") or []
-        if (c.get("workspace") or {}).get("id") == workspace_id
-        and c.get("mapped") and not c.get("floating") and not c.get("fullscreen")
-    ]
-    if len(tiled) != 2:
-        return 0
-
-    width, height = panel.get("width", 0), panel.get("height", 0)
-    if int(panel.get("transform", 0)) % 2 == 1:
-        width, height = height, width
-
-    (ax, ay), (aw, ah) = tiled[0]["at"], tiled[0]["size"]
-    (bx, by), (bw, bh) = tiled[1]["at"], tiled[1]["size"]
-    side_by_side = abs(ay - by) <= 8 and abs(ah - bh) <= 8
-    stacked = abs(ax - bx) <= 8 and abs(aw - bw) <= 8
-
-    if not (side_by_side if height > width else stacked):
-        return 0
-
-    focused = (hyprctl("activewindow") or {}).get("address")
-    hyprctl("dispatch", 'hl.dsp.focus({ window = "address:%s" })' % tiled[0]["address"],
-            parse_json=False)
-    hyprctl("dispatch", 'hl.dsp.layout("togglesplit")', parse_json=False)
-    if focused:
-        hyprctl("dispatch", 'hl.dsp.focus({ window = "address:%s" })' % focused,
-                parse_json=False)
-    return 1
 
 
 def resolve_position(name, current):
@@ -1130,7 +1066,6 @@ def main():
 
     sub.add_parser("status", help="report state as JSON")
     sub.add_parser("detect", help="print detected hardware")
-    sub.add_parser("relayout", help="re-orient the split of two tiled windows")
 
     setup_parser = sub.add_parser("setup", help="record the hardware, drop the old hyprland.lua block")
     # Once the way to take the block out by hand; now what setup always does.
@@ -1165,9 +1100,6 @@ def main():
         return 1
     if args.command == "status":
         print(json.dumps(status()))
-        return 0
-    if args.command == "relayout":
-        print("flipped %d split(s)" % relayout())
         return 0
     if args.command == "detect":
         hardware = detect()

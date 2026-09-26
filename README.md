@@ -258,20 +258,10 @@ $cli rotate normal|right|inverted|left|next|prev
 $cli lock on|off|toggle
 $cli keyboard show|hide|toggle   # the on-screen keyboard plugin, if one is enabled
 $cli status      # JSON, what the panel reads
-$cli relayout    # re-tile two windows on the panel for the current orientation
 $cli detect      # what it found on your machine — include this in issues
 ```
 
 ## Limitations
-
-**Only a workspace of exactly two tiled windows is re-tiled.** Hyprland
-recalculates window geometry when the screen turns, but leaves the dwindle
-split tree as it was: two windows side by side on a wide screen stay side by
-side on a tall one, as a pair of narrow columns. With two windows the fix is
-one certain `togglesplit`. With more, which windows share a split cannot be
-read reliably from where they sit, and a wrong guess makes things worse — so
-they are left for `SUPER + J` (Omarchy's toggle split) by hand. Only the
-workspace showing on the panel is touched, and only in the dwindle layout.
 
 **A rotated panel's monitor rule replaces the one in `monitors.lua`.** Mode,
 position and scale are carried over, but anything else set on that output

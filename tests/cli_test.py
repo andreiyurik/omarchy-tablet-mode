@@ -287,9 +287,7 @@ class PanelTest(CliTestCase):
         self.assertFalse(self.rotate_with(self.edp).called)
 
     def test_an_enabled_panel_is_turned(self):
-        with mock.patch.object(self.cli, "relayout", return_value=0), \
-                mock.patch.object(self.cli.time, "sleep"):
-            self.assertTrue(self.rotate_with(self.edp).called)
+        self.assertTrue(self.rotate_with(self.edp).called)
 
 
 class InputTest(CliTestCase):
@@ -306,55 +304,6 @@ class InputTest(CliTestCase):
             self.cli.apply_input(True, {"internal": ["keyboard", "touchpad"]})
         self.assertEqual(len(hypr_eval.call_args[0][0]), 2)
         self.assertTrue(all("enabled = false" in s for s in hypr_eval.call_args[0][0]))
-
-
-class RelayoutTest(CliTestCase):
-    def run_relayout(self, clients, layout="dwindle", transform=1):
-        panel = {"name": "eDP-1", "width": 1920, "height": 1200, "transform": transform,
-                 "activeWorkspace": {"id": 1}}
-        dispatched = []
-
-        def hyprctl(*args, parse_json=True):
-            if args[0] == "monitors":
-                return [panel]
-            if args[0] == "workspaces":
-                return [{"id": 1, "tiledLayout": layout}]
-            if args[0] == "clients":
-                return clients
-            if args[0] == "activewindow":
-                return {"address": "0xa"}
-            dispatched.append(args[1])
-            return ""
-
-        with mock.patch.object(self.cli, "hyprctl", side_effect=hyprctl):
-            return self.cli.relayout(), dispatched
-
-    def client(self, address, at, size):
-        return {"address": address, "at": at, "size": size, "mapped": True,
-                "floating": False, "fullscreen": False, "workspace": {"id": 1}}
-
-    def test_two_columns_on_a_tall_screen_become_rows(self):
-        clients = [self.client("0xa", [0, 0], [590, 1900]),
-                   self.client("0xb", [600, 0], [590, 1900])]
-        flipped, dispatched = self.run_relayout(clients)
-        self.assertEqual(flipped, 1)
-        self.assertIn('hl.dsp.layout("togglesplit")', dispatched)
-
-    def test_rows_on_a_tall_screen_are_left_alone(self):
-        clients = [self.client("0xa", [0, 0], [1190, 950]),
-                   self.client("0xb", [0, 960], [1190, 950])]
-        self.assertEqual(self.run_relayout(clients)[0], 0)
-
-    def test_three_windows_are_not_guessed_at(self):
-        clients = [self.client("0xa", [0, 0], [390, 1900]),
-                   self.client("0xb", [400, 0], [390, 1900]),
-                   self.client("0xc", [800, 0], [390, 1900])]
-        self.assertEqual(self.run_relayout(clients)[0], 0)
-
-    def test_other_layouts_are_not_touched(self):
-        clients = [self.client("0xa", [0, 0], [590, 1900]),
-                   self.client("0xb", [600, 0], [590, 1900])]
-        self.assertEqual(self.run_relayout(clients, layout="scrolling")[0], 0)
 
 
 class BindsTest(CliTestCase):
