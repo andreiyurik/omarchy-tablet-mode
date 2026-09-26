@@ -33,6 +33,9 @@ Item {
   // The name of the on-screen keyboard plugin folding brings up, or "".
   property string keyboard: ""
 
+  // How long to wait before bringing a crashed daemon back.
+  property int restartDelay: 2000
+
   readonly property string cli: decodeURIComponent(
     Qt.resolvedUrl("bin/omarchy-tablet-mode").toString().replace("file://", ""))
 
@@ -80,19 +83,28 @@ Item {
     id: daemonProc
     command: [root.cli, "daemon"]
     stdout: SplitParser {
-      onRead: function(line) { root.applyStatus(line) }
+      onRead: function(line) {
+        // A daemon that reports is a daemon that started; the next crash
+        // gets the short pause again.
+        root.restartDelay = 2000
+        root.applyStatus(line)
+      }
     }
     stderr: SplitParser {
       onRead: function(line) { console.info(line) }
     }
-    // After a crash, come back. The pause keeps a daemon that fails at startup
-    // from spinning.
-    onExited: daemonRestart.restart()
+    // After a crash, come back. The pause doubles, up to a minute, while the
+    // daemon keeps failing before it reports, so one that cannot start does
+    // not spin.
+    onExited: {
+      daemonRestart.interval = root.restartDelay
+      daemonRestart.restart()
+      root.restartDelay = Math.min(root.restartDelay * 2, 60000)
+    }
   }
 
   Timer {
     id: daemonRestart
-    interval: 2000
     onTriggered: if (!daemonProc.running) daemonProc.running = true
   }
 
