@@ -729,7 +729,6 @@ def status(conf=None):
     conf = conf or read_conf()
     transform = int((detect_panel() or {}).get("transform", 0))
     return {
-        "panel": conf.get("panel"),
         "transform": transform,
         "orientation": ORIENTATIONS[transform % 4],
         "locked": locked(),

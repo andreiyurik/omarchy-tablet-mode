@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 
 // The rotation daemon, mounted once for the shell.
 //
@@ -129,14 +128,5 @@ Item {
   Process {
     id: rotateProc
     onExited: root.refresh()
-  }
-
-  Connections {
-    target: Hyprland
-    function onRawEvent(event) {
-      // A reload replays the recorded orientation, which may differ from what
-      // the widget last heard.
-      if (event && String(event.name) === "configreloaded") root.refresh()
-    }
   }
 }
