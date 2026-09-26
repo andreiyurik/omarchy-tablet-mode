@@ -185,11 +185,6 @@ Models whose sensor needs anything other than the standard mounting. None is
 known yet: every machine tried so far, the ThinkPad X1 Yoga Gen 6 included,
 turns correctly with it.
 
-> **Upgrading from 1.2 or earlier?** Those versions had the standard mounting
-> mirrored in the upright positions, so machines with a correctly mounted
-> sensor needed `portrait-swapped` to turn right. If you picked that setting,
-> set it back to `Auto`.
-
 **If yours needs anything other than `Auto`, please file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)**
 with the output of:
@@ -342,18 +337,6 @@ only thing read on a timer.
 **Disabled means inert.** When the daemon is stopped because the plugin was
 disabled or removed, it turns the panel upright, gives the keyboard back and
 takes its switch binds down.
-
-## Upgrading from 1.3 or earlier
-
-Earlier versions loaded a Hyprland fragment through a marked block at the end
-of `~/.config/hypr/hyprland.lua`. On its first start, this version takes that
-block out again, markers and all, and leaves the rest of the file as it is.
-Those versions also kept a copy of the file from before they first touched it,
-`hyprland.lua.tablet-mode-backup`; once you are happy, you can delete it.
-
-The new panel appears once Omarchy's shell restarts — at the next login, or
-with `omarchy-restart-shell`. Until then, the old rotation lock button keeps
-working.
 
 ## Development
 

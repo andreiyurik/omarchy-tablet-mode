@@ -72,17 +72,7 @@ Item {
     root.keyboard = data.keyboard || ""
   }
 
-  Component.onCompleted: {
-    // Records the hardware, and on an upgrade takes out the hyprland.lua
-    // block versions before 1.4 added. The daemon applies everything else.
-    setupProc.running = true
-  }
-
-  Process {
-    id: setupProc
-    command: [root.cli, "setup"]
-    onExited: daemonProc.running = true
-  }
+  Component.onCompleted: daemonProc.running = true
 
   // The daemon reads the widget's settings from shell.json itself and follows
   // changes to them, so nothing here has to pass them on or restart it.

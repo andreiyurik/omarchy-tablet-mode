@@ -19,7 +19,6 @@ Subcommands:
   fold      record a fold switch event: on|off (Hyprland's switch binds run this)
   keyboard  show or hide the on-screen keyboard plugin: show|hide|toggle
   status    report state as JSON, for the bar widget
-  setup     record the hardware, and drop the hyprland.lua block of versions before 1.4
   detect    print detected hardware, for bug reports
 """
 
@@ -45,11 +44,6 @@ LOCK_FILE = os.path.join(STATE_DIR, "locked")
 FOLD_FILE = os.path.join(STATE_DIR, "folded")
 
 SHELL_JSON = os.path.join(CONFIG_HOME, "omarchy/shell.json")
-# Versions before 1.4 loaded a Hyprland fragment through a marked block in
-# hyprland.lua. `setup` takes it out again; nothing writes one any more.
-HYPRLAND_LUA = os.path.join(CONFIG_HOME, "hypr/hyprland.lua")
-MARKER_BEGIN = "-- BEGIN %s" % PLUGIN_ID
-MARKER_END = "-- END %s" % PLUGIN_ID
 
 # The Lua global holding the switch binds this daemon made, so a restarted
 # daemon can take the old ones down before binding again. A config reload
@@ -430,9 +424,7 @@ def read_conf():
 def write_conf(conf):
     """The hardware found and the orientation last applied on purpose.
 
-    Plain key=value, the format versions before 1.4 shared with a Lua
-    fragment; kept so an upgrade reads the old file. Returns whether anything
-    changed.
+    Plain key=value. Returns whether anything changed.
     """
     lines = ["# Written by omarchy-tablet-mode. Edited by hand, it will be overwritten."]
     for key in ("panel", "mode", "position", "scale", "transform", "tablet_sysfs"):
@@ -968,43 +960,6 @@ def restore():
     hypr_eval(bind_statements({}, bind=False))
 
 
-# -------------------------------------------------------------------- setup
-
-
-def setup():
-    """Record the hardware, and take out the block versions before 1.4 added.
-
-    Those versions loaded a Hyprland fragment through a marked block in
-    hyprland.lua. The daemon now applies everything at runtime, so the block
-    only duplicates it: it is removed, markers and all, and nothing else in
-    the file is touched. The reload that follows drops what it had set up.
-    """
-    refresh_conf()
-    try:
-        with open(HYPRLAND_LUA) as handle:
-            text = handle.read()
-    except OSError:
-        return 0  # nothing to migrate
-
-    pattern = re.compile(
-        r"\n*" + re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END) + r"\n?",
-        re.S,
-    )
-    if not pattern.search(text):
-        return 0
-    updated = pattern.sub("\n", text).rstrip("\n") + "\n"
-    # Through a symlink to the file itself, so a dotfiles manager's link to
-    # hyprland.lua stays a link.
-    target = os.path.realpath(HYPRLAND_LUA)
-    tmp = target + ".tmp"
-    with open(tmp, "w") as handle:
-        handle.write(updated)
-    os.replace(tmp, target)
-    log("removed the block earlier versions added to %s" % HYPRLAND_LUA)
-    subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL)
-    return 0
-
-
 # --------------------------------------------------------------------- main
 
 
@@ -1067,10 +1022,6 @@ def main():
     sub.add_parser("status", help="report state as JSON")
     sub.add_parser("detect", help="print detected hardware")
 
-    setup_parser = sub.add_parser("setup", help="record the hardware, drop the old hyprland.lua block")
-    # Once the way to take the block out by hand; now what setup always does.
-    setup_parser.add_argument("--remove", action="store_true", help=argparse.SUPPRESS)
-
     args = parser.parse_args()
 
     if args.command == "daemon":
@@ -1107,8 +1058,6 @@ def main():
         hardware["mounting"] = resolve_mapping("auto", hardware["model"])
         print(json.dumps(hardware, indent=2))
         return 0
-    if args.command == "setup":
-        return setup()
     return 2
 
 

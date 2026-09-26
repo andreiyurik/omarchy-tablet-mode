@@ -444,53 +444,5 @@ class SensorProxyTest(CliTestCase):
             self.assertIs(self.cli.status({})["sensorInstalled"], True)
 
 
-class SetupTest(CliTestCase):
-    user_config = 'require("hypr.monitors")\n\n-- a line of their own\n'
-
-    def setUp(self):
-        super().setUp()
-        self.lua = self.cli.HYPRLAND_LUA
-        self.write(self.lua, self.user_config)
-        for name, value in (("refresh_conf", mock.Mock(return_value=({}, False))),
-                            ("subprocess", mock.Mock()), ("log", mock.Mock())):
-            patcher = mock.patch.object(self.cli, name, value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
-
-    def old_block(self):
-        return ("%s\ndo local path = \"/x/rotation.lua\"; dofile(path) end\n%s\n"
-                % (self.cli.MARKER_BEGIN, self.cli.MARKER_END))
-
-    def test_leaves_a_config_without_the_old_block_untouched(self):
-        self.cli.setup()
-        self.assertEqual(self.read(self.lua), self.user_config)
-        self.assertFalse(self.cli.subprocess.run.called)
-
-    def test_takes_out_the_block_earlier_versions_added_and_nothing_else(self):
-        later = "\n-- [key-visualizer] a later tool\ndofile(\"/y.lua\")\n"
-        self.write(self.lua, self.user_config + "\n\n" + self.old_block() + later)
-        self.cli.setup()
-        text = self.read(self.lua)
-        self.assertNotIn(self.cli.MARKER_BEGIN, text)
-        self.assertNotIn("rotation.lua", text)
-        self.assertIn("-- a line of their own", text)
-        self.assertIn('dofile("/y.lua")', text)
-        self.assertTrue(self.cli.subprocess.run.called)
-
-    def test_a_symlinked_hyprland_lua_stays_a_link(self):
-        dotfiles = os.path.join(self.home, "dotfiles", "hyprland.lua")
-        self.write(dotfiles, self.user_config + "\n" + self.old_block())
-        os.remove(self.lua)
-        os.symlink(dotfiles, self.lua)
-        self.cli.setup()
-        self.assertTrue(os.path.islink(self.lua))
-        self.assertNotIn(self.cli.MARKER_BEGIN, self.read(dotfiles))
-
-    def test_a_missing_hyprland_lua_is_not_an_error(self):
-        os.remove(self.lua)
-        self.assertEqual(self.cli.setup(), 0)
-        self.assertFalse(os.path.exists(self.lua))
-
-
 if __name__ == "__main__":
     unittest.main()
