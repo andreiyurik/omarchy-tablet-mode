@@ -160,10 +160,10 @@ anything.
 ### If the screen rotates the wrong way
 
 The sensor reports which way is up, but not how it was screwed into the
-chassis. The default, `Auto`, knows the mounting of every model in
-[Known machines](#known-machines) and assumes the standard one for the rest.
-If yours comes out wrong, turn the machine, see which positions come out
-mirrored, and pick the matching entry under the panel's **Settings**:
+chassis. `Standard` is right for every machine tried so far, the ThinkPad X1
+Yoga Gen 6 included. If yours comes out wrong, turn the machine, see which
+positions come out mirrored, and pick the matching entry under the panel's
+**Settings**:
 
 | Symptom | Choice |
 |---|---|
@@ -175,29 +175,11 @@ That setting is a workaround. The lasting fix belongs in systemd: its
 [`60-sensor.hwdb`](https://github.com/systemd/systemd/blob/main/hwdb.d/60-sensor.hwdb)
 carries an `ACCEL_MOUNT_MATRIX` per model, and iio-sensor-proxy applies it for
 every desktop, not just this one. A machine that needs anything other than
-`Auto` here is a machine missing from that file. `monitor-sensor`, which
+`Standard` here is a machine missing from that file; `monitor-sensor`, which
 ships with iio-sensor-proxy, shows what the sensor reports while you try a
-matrix.
-
-### Known machines
-
-Models whose sensor needs anything other than the standard mounting. None is
-known yet: every machine tried so far, the ThinkPad X1 Yoga Gen 6 included,
-turns correctly with it.
-
-**If yours needs anything other than `Auto`, please file a
-[machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml)**
-with the output of:
-
-```bash
-~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode detect
-```
-
-It prints the model as DMI reports it, along with the panel, digitizer and fold
-sensor that were found, and the mounting `Auto` picks. A model reported here is
-added to `Auto`, so the next person with it needs no setting at all. Each entry
-is also a draft for the hwdb; once a model is fixed upstream, it can leave the
-table.
+matrix. Please also file a
+[machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml),
+so the next person with your model knows what to pick.
 
 ## The pen
 

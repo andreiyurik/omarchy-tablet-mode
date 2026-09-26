@@ -62,12 +62,6 @@ class PositionsTest(CliTestCase):
 
 
 class MappingTest(CliTestCase):
-    def setUp(self):
-        super().setUp()
-        known = mock.patch.dict(self.cli.KNOWN_MOUNTINGS, {"Odd Convertible 14": "rotated-180"})
-        known.start()
-        self.addCleanup(known.stop)
-
     def test_standard_turns_the_way_gnome_and_iio_hyprland_do(self):
         # mutter's meta_orientation_to_transform: left-up is 90 degrees, right-up 270.
         standard = self.cli.MAPPINGS["standard"]
@@ -82,19 +76,12 @@ class MappingTest(CliTestCase):
                                                            "bottom-up": s["normal"]}))
         self.assertEqual(m["rotated-180"], {k: (v + 2) % 4 for k, v in s.items()})
 
-    def test_auto_uses_the_mounting_known_for_the_model(self):
-        self.assertEqual(self.cli.resolve_mapping("auto", "Odd Convertible 14"), "rotated-180")
+    def test_a_named_mounting_is_used(self):
+        self.assertEqual(self.cli.resolve_mapping("portrait-swapped"), "portrait-swapped")
 
-    def test_auto_falls_back_to_standard_for_an_unknown_model(self):
-        self.assertEqual(self.cli.resolve_mapping("auto", "ThinkPad X1 Yoga Gen 6"), "standard")
-
-    def test_a_chosen_mounting_wins_over_the_known_one(self):
-        self.assertEqual(self.cli.resolve_mapping("portrait-swapped", "Odd Convertible 14"),
-                         "portrait-swapped")
-
-    def test_every_known_mounting_exists(self):
-        for model, mounting in self.cli.KNOWN_MOUNTINGS.items():
-            self.assertIn(mounting, self.cli.MAPPINGS, model)
+    def test_anything_else_is_standard(self):
+        for name in ("auto", None, "", "sideways"):
+            self.assertEqual(self.cli.resolve_mapping(name), "standard", name)
 
 
 class SettingsTest(CliTestCase):

@@ -41,7 +41,7 @@ Panel {
 
   // The daemon reads these from shell.json itself and follows the file, so
   // saving one is all it takes to apply it.
-  readonly property string mapping: setting("mapping", "auto")
+  readonly property string mapping: setting("mapping", "standard")
   readonly property bool allPositions: setting("allPositions", false) === true
   readonly property bool alwaysShow: setting("alwaysShow", false) === true
   readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
@@ -155,7 +155,7 @@ Panel {
   ]
 
   readonly property var mappingOptions: [
-    { value: "auto", label: "Auto" },
+    { value: "standard", label: "Standard" },
     { value: "portrait-swapped", label: "Upright ⇄" },
     { value: "landscape-swapped", label: "Flat ⇄" },
     { value: "rotated-180", label: "180°" }
@@ -388,7 +388,8 @@ Panel {
           ChoiceRow {
             rowId: "mapping"
             options: root.mappingOptions
-            value: root.mapping === "standard" ? "auto" : root.mapping
+            value: root.mappingOptions.some(function(o) { return o.value === root.mapping })
+              ? root.mapping : "standard"
             onChosen: function(v) { root.save("mapping", v) }
           }
 
@@ -396,8 +397,8 @@ Panel {
             width: parent.width
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: "Pick the pair that comes out mirrored. If your model needs anything but Auto, "
-              + "a machine report on the plugin's GitHub page makes Auto right for the next person."
+            text: "Pick the pair that comes out mirrored. If your model needs anything but Standard, "
+              + "please file a machine report on the plugin's GitHub page."
             color: root.bar.foreground
             opacity: 0.6
             font.family: root.bar.fontFamily
