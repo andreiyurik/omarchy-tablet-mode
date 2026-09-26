@@ -42,7 +42,6 @@ Panel {
   // The daemon reads these from shell.json itself and follows the file, so
   // saving one is all it takes to apply it.
   readonly property string mapping: setting("mapping", "standard")
-  readonly property bool allPositions: setting("allPositions", false) === true
   readonly property bool alwaysShow: setting("alwaysShow", false) === true
   readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
@@ -55,9 +54,8 @@ Panel {
 
   // Open as a laptop, nothing turns and the keyboard is the real one, so the
   // button stays out of the bar until the machine folds, unless alwaysShow is on. It stays while a
-  // lock is held, so the lock can be let go, and wherever the screen turns
-  // as a laptop too.
-  visible: !hasFoldSensor || alwaysShow || allPositions || folded || locked || opened
+  // lock is held, so the lock can be let go, and wherever no fold is reported.
+  visible: !hasFoldSensor || alwaysShow || folded || locked || opened
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -65,7 +63,7 @@ Panel {
     if (!sensorInstalled) return "Needs iio-sensor-proxy"
     if (locked) return "Rotation locked"
     if (!sensorAvailable) return "Turned by hand"
-    if (hasFoldSensor && !allPositions && !folded) return "Rotates once folded"
+    if (hasFoldSensor && !folded) return "Rotates once folded"
     return "Following the sensor"
   }
 
@@ -85,7 +83,6 @@ Panel {
     if (keyboard !== "") list.push({ id: "keyboardToggle", cells: 1 })
     list.push({ id: "screen", cells: 3 }, { id: "settings", cells: 1 })
     if (settingsShown) {
-      list.push({ id: "allPositions", cells: 1 })
       if (keyboard !== "") list.push({ id: "keyboardOnFold", cells: 1 })
       list.push({ id: "mapping", cells: mappingOptions.length })
     }
@@ -125,7 +122,6 @@ Panel {
     var row = rows[cursorRow].id
     if (row === "screen") screenActions[cursorCell].run()
     else if (row === "settings") settingsShown = !settingsShown
-    else if (row === "allPositions") save("allPositions", !allPositions)
     else if (row === "keyboardOnFold") save("keyboardOnFold", !keyboardOnFold)
     else if (row === "keyboardToggle") { if (service) service.toggleKeyboard() }
     else if (row === "mapping") save("mapping", mappingOptions[cursorCell].value)
@@ -351,20 +347,6 @@ Panel {
           visible: root.settingsShown
           width: parent.width
           spacing: Style.space(10)
-
-          Toggle {
-            width: parent.width
-            label: "Rotate as a laptop too"
-            description: root.hasFoldSensor
-              ? "Off, the screen turns only once folded, so a laptop on your knees never flips."
-              : "This machine has no fold sensor, so the screen turns in every position."
-            checked: root.allPositions || !root.hasFoldSensor
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            hasCursor: root.cursorOn("allPositions")
-            onClicked: root.save("allPositions", !root.allPositions)
-            onHovered: function(h) { if (h) root.point("allPositions") }
-          }
 
           Toggle {
             visible: root.keyboard !== ""

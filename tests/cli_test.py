@@ -103,8 +103,7 @@ class SettingsTest(CliTestCase):
 
 class DesiredTransformTest(CliTestCase):
     def desired(self, **kwargs):
-        args = {"mapping": self.cli.MAPPINGS["standard"], "tablet_only": True,
-                "is_locked": False, "is_folded": True, "orientation": "left-up",
+        args = {"mapping": self.cli.MAPPINGS["standard"], "is_locked": False, "is_folded": True, "orientation": "left-up",
                 "recorded": 0}
         args.update(kwargs)
         return self.cli.desired_transform(**args)
@@ -115,9 +114,6 @@ class DesiredTransformTest(CliTestCase):
     def test_open_stands_upright(self):
         self.assertEqual(self.desired(is_folded=False, recorded=1), 0)
 
-    def test_open_follows_the_sensor_when_asked_to(self):
-        self.assertEqual(self.desired(is_folded=False, tablet_only=False), 1)
-
     def test_a_lock_holds_what_was_recorded_even_after_a_reload_straightened_it(self):
         self.assertEqual(self.desired(is_locked=True, recorded=3), 3)
 
@@ -125,7 +121,7 @@ class DesiredTransformTest(CliTestCase):
         self.assertEqual(self.desired(orientation=None, recorded=2), 2)
         self.assertEqual(self.desired(orientation="undefined", recorded=2), 2)
 
-    def test_a_machine_without_fold_sensor_follows_the_sensor(self):
+    def test_an_unknown_fold_follows_the_sensor(self):
         self.assertEqual(self.desired(is_folded=None), 1)
 
 
@@ -171,26 +167,27 @@ class FoldTest(CliTestCase):
         self.write(self.cli.FOLD_FILE, "sig-before 1\n")
         self.assertIs(self.cli.folded({"tablet_switch": ["Switch"]}), False)
 
-    def test_no_sensor_at_all(self):
-        with mock.patch.object(self.cli, "chassis_folds", return_value=False):
-            self.assertIsNone(self.cli.folded({"touch": [], "internal": [], "tablet_switch": []}))
+    def test_no_sensor_at_all_is_unknown(self):
+        self.assertIsNone(self.cli.folded({"touch": [], "internal": [], "tablet_switch": []}))
 
-    def test_a_convertible_whose_switch_is_not_registered_yet_starts_open(self):
-        # intel-hid registers its switch device only on the first fold.
-        with mock.patch.object(self.cli, "chassis_folds", return_value=True):
-            self.assertIs(self.cli.folded({"tablet_switch": []}), False)
+    def test_a_switch_without_an_event_yet_starts_open(self):
+        self.assertIs(self.cli.folded({"tablet_switch": ["Switch"]}), False)
 
     def test_an_event_from_a_switch_detection_never_saw_still_counts(self):
+        # intel-hid registers its switch device only on the first fold.
         self.write(self.cli.FOLD_FILE, "sig-now 1\n")
-        with mock.patch.object(self.cli, "chassis_folds", return_value=False):
-            self.assertIs(self.cli.folded({"tablet_switch": []}), True)
+        self.assertIs(self.cli.folded({"tablet_switch": []}), True)
+        self.assertTrue(self.cli.has_fold_sensor({"tablet_switch": []}))
 
-    def test_the_chassis_type_says_whether_a_machine_folds(self):
-        for chassis, folds in (("31", True), ("32", True), ("10", False)):
-            self.write(os.path.join(self.home, "chassis_type"), chassis + "\n")
-            with mock.patch.object(self.cli, "CHASSIS_TYPE",
-                                   os.path.join(self.home, "chassis_type")):
-                self.assertIs(self.cli.chassis_folds(), folds, chassis)
+    def test_the_switch_event_decides_the_keyboard_before_sysfs_catches_up(self):
+        sysfs = os.path.join(self.home, "tablet_mode")
+        self.write(sysfs, "0\n")
+        self.write(self.cli.SHELL_JSON, '{"bar": {"layout": {"right": [{"id": "%s"}]}}}'
+                   % self.cli.PLUGIN_ID)
+        self.cli.write_conf({"tablet_sysfs": sysfs, "internal": ["kbd"]})
+        with mock.patch.object(self.cli, "apply_input") as apply_input:
+            self.cli.cmd_fold("on")
+        apply_input.assert_called_once_with(True)
 
 
 class DetectionTest(CliTestCase):

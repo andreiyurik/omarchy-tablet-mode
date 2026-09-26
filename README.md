@@ -67,7 +67,7 @@ compositor only, and puts its changes back after every config reload.
 - **Zero setup.** It finds your panel, touchscreen, pen, built-in keyboard and
   fold sensor on its own — and leaves your USB keyboard alone.
 - **Rotates like a tablet, not a phone.** Only once folded, so a laptop on your
-  knees never flips.
+  knees never flips. A machine that never reports its fold still turns.
 - **Instant.** The screen turns live, without reloading your config.
 - **Made for fingers.** Fold the machine and a button appears in the bar. It
   opens a panel of big targets: the keyboard, and the rotation lock.
@@ -88,7 +88,8 @@ Omarchy with its Hyprland Lua config (`~/.config/hypr/hyprland.lua`).
 
 A regular clamshell laptop has nothing to rotate, so this plugin is not for it.
 A machine without an accelerometer still gets the rotation lock and turning the
-screen by hand.
+screen by hand. One whose fold goes unreported still turns with the sensor, in
+every position, since the plugin cannot tell laptop from tablet there.
 
 | Family | Fold sensor | Status |
 |---|---|---|
@@ -147,8 +148,6 @@ folded machine is reached for:
 
 **Settings**, at the bottom, opens what is set once, if ever:
 
-- **Rotate as a laptop too.** Follow the sensor in every position, not only
-  when folded. The icon then stays in the bar.
 - **Keyboard when folded.** Whether folding brings up the on-screen keyboard.
 - **Screen turns the wrong way?** The accelerometer mounting; see below.
 
@@ -291,10 +290,10 @@ and there it wins: an event only says what changed.
 
 Every tablet mode switch is bound, not just one — a ThinkPad has two. Some
 drivers, `intel-hid` among them, register their switch only on the first fold,
-so the plugin binds their names ahead of time and treats a machine whose
-firmware calls it a convertible as one with a fold sensor from the start.
-Otherwise the first fold after boot would go unheard, and on many Dell, HP and
-Lenovo machines that switch is the only fold sensor there is.
+so the plugin binds their names ahead of time. Otherwise the first fold after
+boot would go unheard, and on many Dell, HP and Lenovo machines that switch is
+the only fold sensor there is. Until that first fold, such a machine is one
+whose fold is unknown, and the screen follows the sensor.
 
 **Built-in devices are told apart by udev, not by name.** udev tags every input
 device `ID_INTEGRATION=internal` or `external`, which is what keeps a USB

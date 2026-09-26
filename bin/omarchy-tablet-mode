@@ -95,11 +95,6 @@ SW_TABLET_MODE = 1  # bit in the evdev switch capabilities, linux/input-event-co
 # is. A bind for a device that never appears does nothing.
 LAZY_TABLET_SWITCHES = ("Intel HID switches", "Intel Virtual Switches")
 
-# SMBIOS chassis types that fold or detach: a machine reporting one has a
-# tablet mode switch even before its driver has registered it.
-CHASSIS_TYPE = "/sys/class/dmi/id/chassis_type"
-FOLDING_CHASSIS = ("31", "32")  # Convertible, Detachable
-
 ORIENTATIONS = ["normal", "right-up", "bottom-up", "left-up"]
 
 # iio-sensor-proxy's orientation to a Hyprland transform, per accelerometer
@@ -115,14 +110,19 @@ MAPPINGS = {
     "rotated-180": {"normal": 2, "right-up": 1, "bottom-up": 0, "left-up": 3},
 }
 
+
 def resolve_mapping(name):
     """The mounting to use: the named one, or standard for anything else --
     including "auto", which versions before 1.6 saved as the default."""
     return name if name in MAPPINGS else "standard"
 
 
-def desired_transform(mapping, tablet_only, is_locked, is_folded, orientation, recorded):
+def desired_transform(mapping, is_locked, is_folded, orientation, recorded):
     """Where the panel should stand, or None when there is nothing to go on.
+
+    Open as a laptop, the screen stands upright. Folded, or with no way of
+    knowing, it follows the sensor -- a machine whose fold goes unreported
+    still turns, and a laptop standing on a desk reads upright anyway.
 
     The recorded transform is what was last applied on purpose. It is held
     while locked, and whenever the sensor has no reading to offer -- which is
@@ -130,9 +130,9 @@ def desired_transform(mapping, tablet_only, is_locked, is_folded, orientation, r
     """
     if is_locked:
         return recorded
-    if not tablet_only or is_folded is not False:
-        return mapping.get(orientation, recorded)
-    return 0  # open as a laptop: the screen stands upright
+    if is_folded is False:
+        return 0
+    return mapping.get(orientation, recorded)
 
 
 def log(message):
@@ -334,10 +334,6 @@ def detect_tablet_switches(devices, kernel):
     return [d["name"] for d in internal or candidates]
 
 
-def chassis_folds():
-    return read_text(CHASSIS_TYPE) in FOLDING_CHASSIS
-
-
 def sensor_proxy_installed():
     return os.path.exists(SENSOR_PROXY_POLICY)
 
@@ -375,7 +371,6 @@ def detect():
         "internal": detect_internal_devices(devices, kernel),
         "tablet_switch": detect_tablet_switches(devices, kernel),
         "tablet_sysfs": detect_tablet_sysfs(),
-        "chassis_folds": chassis_folds(),
         "sensor_proxy": sensor_proxy_installed(),
     }
 
@@ -439,7 +434,7 @@ def refresh_conf(updates=None):
     """Re-detect hardware, keeping the orientation already recorded."""
     conf = read_conf()
     conf.update(detect())
-    for key in ("model", "chassis_folds", "sensor_proxy", "cli"):
+    for key in ("model", "sensor_proxy"):
         conf.pop(key, None)
     conf.update(updates or {})
     return conf, write_conf(conf)
@@ -541,12 +536,33 @@ def locked():
     return os.path.exists(LOCK_FILE)
 
 
+def fold_event():
+    """The last switch event, True or False, or None if there has been none.
+
+    Tagged with the Hyprland instance that delivered it: a file left over from
+    before a logout says nothing about the lid now. Any switch counts,
+    including one registered only after detection, as intel-hid's is.
+    """
+    parts = (read_text(FOLD_FILE) or "").split()
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+    if len(parts) == 2 and parts[0] == signature:
+        return parts[1] == "1"
+    return None
+
+
 def has_fold_sensor(conf):
-    return bool(conf.get("tablet_sysfs") or conf.get("tablet_switch") or chassis_folds())
+    return bool(conf.get("tablet_sysfs") or conf.get("tablet_switch")
+                or fold_event() is not None)
 
 
 def folded(conf=None):
-    """True or False, or None on a machine with no fold sensor at all."""
+    """True or False, or None when nothing has reported the fold.
+
+    A sysfs state wins: it says where things stand, where an event only says
+    what changed. A machine with a switch but no event yet starts out open.
+    With nothing at all, the fold is unknown, and the screen follows the
+    sensor rather than stay put on a machine that never says it folded.
+    """
     conf = conf or read_conf()
 
     sysfs = conf.get("tablet_sysfs")
@@ -555,15 +571,10 @@ def folded(conf=None):
         if value is not None:
             return value == "1"
 
-    # The last switch event, tagged with the Hyprland instance that delivered
-    # it: a file left over from before a logout says nothing about the lid now.
-    # Any switch counts, including one that did not exist at detection.
-    parts = (read_text(FOLD_FILE) or "").split()
-    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
-    if len(parts) == 2 and parts[0] == signature:
-        return parts[1] == "1"
+    event = fold_event()
+    if event is not None:
+        return event
 
-    # No event yet. A machine that folds starts out open.
     return False if has_fold_sensor(conf) else None
 
 
@@ -700,7 +711,7 @@ def status(conf=None):
 # ------------------------------------------------------------------- daemon
 
 
-def run_daemon(mapping_override=None, all_positions=False):
+def run_daemon(mapping_override=None):
     """Follow the accelerometer, the fold and the lock; print state as JSON lines.
 
     The Service reads stdout, so the widget changes the moment something
@@ -724,7 +735,7 @@ def run_daemon(mapping_override=None, all_positions=False):
 
     conf, _ = refresh_conf()
     if not has_fold_sensor(conf):
-        log("no fold sensor on this machine; rotating in every position")
+        log("no fold sensor found; following the accelerometer in every position")
 
     # "wired" is whether the switch binds are in place. A freshly loaded
     # config has none.
@@ -768,12 +779,11 @@ def run_daemon(mapping_override=None, all_positions=False):
         if mapping_name != state["mapping"]:
             log("accelerometer mounting: %s" % mapping_name)
             state["mapping"] = mapping_name
-        tablet_only = not (all_positions or settings.get("allPositions") is True)
 
         proxy = state["proxy"]
         value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
         target = desired_transform(
-            MAPPINGS[mapping_name], tablet_only, locked(), is_folded,
+            MAPPINGS[mapping_name], locked(), is_folded,
             value.get_string() if value else None,
             int(read_conf().get("transform") or 0),
         )
@@ -978,8 +988,10 @@ def cmd_fold(action):
                                   action == "on"))
     os.replace(tmp, FOLD_FILE)
     # Input is switched here rather than by the daemon, so the keyboard follows
-    # the lid even while the shell is not running.
-    apply_input(folded() is True)
+    # the lid even while the shell is not running. By the event itself, not
+    # folded(): sysfs may not have caught up with the switch yet. The daemon's
+    # poll of sysfs puts right anything the event got wrong.
+    apply_input(action == "on")
     return 0
 
 
@@ -991,8 +1003,6 @@ def main():
     daemon = sub.add_parser("daemon", help="follow the accelerometer")
     daemon.add_argument("--mapping", choices=sorted(MAPPINGS),
                         help="override the setting in shell.json")
-    daemon.add_argument("--all-positions", action="store_true",
-                        help="rotate in laptop mode too, overriding the setting")
 
     rotate = sub.add_parser("rotate", help="set orientation by hand")
     rotate.add_argument("position")
@@ -1015,7 +1025,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "daemon":
-        return run_daemon(args.mapping, args.all_positions)
+        return run_daemon(args.mapping)
     if args.command == "rotate":
         current = int((detect_panel() or {}).get("transform", 0))
         transform = resolve_position(args.position, current)
