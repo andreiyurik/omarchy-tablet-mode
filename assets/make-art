@@ -8,14 +8,28 @@ the colors; the SVGs are plain text, so the diff shows what changed.
 
 The hero is scaled down to about two thirds on GitHub, so its words are drawn
 large and kept to a few each.
+
+The preview puts assets/shots/tablet-portrait.png, a screenshot of the panel
+turned upright with the Tablet Mode panel and an on-screen keyboard open, on
+the glass of a tablet. Retake it with the Tokyo Night theme, whose colors are
+the ones below.
 """
 
+import base64
 import math
 import os
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT = "Inter, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif"
+MONO = "'JetBrains Mono', 'JetBrainsMono Nerd Font', 'DejaVu Sans Mono', monospace"
+
+# What the preview promises, each with what happens on a 2-in-1 without it.
+FIXES = [
+    ("The screen turns with you", "instead of staying sideways"),
+    ("Taps land under your finger", "instead of off to the side"),
+    ("The keyboard switches off", "instead of typing into the table"),
+]
 
 THEMES = {
     "dark": {
@@ -161,30 +175,27 @@ def cards(c, top, height):
 
 
 def icon_shapes(x, y, size):
-    """A laptop folded into a tent, with the turn the screen makes."""
+    """A laptop seen from the side, its lid swinging back round the hinge: a 2-in-1."""
     k = size / 128
-    ax, ay, leg, spread = 64, 46, 50, 34
-    dx, dy = leg * math.sin(math.radians(spread)), leg * math.cos(math.radians(spread))
+    hx, hy = 52, 84          # the hinge
+    ink = "#0d1017"
 
-    # A clockwise arc over the top, its head pointing down the screen side.
-    cx, cy, r = 64, 50, 30
-    start, end = 215, 325
-    sx, sy = cx + r * math.cos(math.radians(start)), cy + r * math.sin(math.radians(start))
-    ex, ey = cx + r * math.cos(math.radians(end)), cy + r * math.sin(math.radians(end))
-    tangent = math.radians(end + 90)
+    # The fold, anticlockwise from behind the lid to under the base.
+    r, start, end = 32, 252, 118
+    sx, sy = hx + r * math.cos(math.radians(start)), hy + r * math.sin(math.radians(start))
+    ex, ey = hx + r * math.cos(math.radians(end)), hy + r * math.sin(math.radians(end))
+    tangent = math.radians(end - 90)
     heads = []
     for turn in (150, -150):
         a = tangent + math.radians(turn)
         heads.append(f'M{ex:.1f} {ey:.1f} l{12 * math.cos(a):.1f} {12 * math.sin(a):.1f}')
     return [
         f'<g transform="translate({x} {y}) scale({k})">',
-        '<defs><linearGradient id="tm-g" x1="0" y1="0" x2="1" y2="1">'
-        '<stop offset="0" stop-color="#8fb3ff"/><stop offset="1" stop-color="#5a7fe6"/></linearGradient></defs>',
-        '<rect width="128" height="128" rx="30" fill="url(#tm-g)"/>',
-        f'<path d="M{ax - dx:.1f} {ay + dy + 16:.1f} L{ax} {ay + 16} L{ax + dx:.1f} {ay + dy + 16:.1f}" '
-        'stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
-        f'<path d="M{sx:.1f} {sy:.1f} A{r} {r} 0 0 1 {ex:.1f} {ey:.1f} {" ".join(heads)}" stroke="#fff" '
-        'stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>',
+        '<rect width="128" height="128" rx="30" fill="#7aa2f7"/>',
+        f'<path d="M{hx} {hy} H104 M{hx} {hy} L64 32" stroke="{ink}" stroke-width="10" '
+        'stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+        f'<path d="M{sx:.1f} {sy:.1f} A{r} {r} 0 0 0 {ex:.1f} {ey:.1f} {" ".join(heads)}" stroke="{ink}" '
+        'stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
         '</g>',
     ]
 
@@ -193,6 +204,84 @@ def svg(width, height, body, background=None):
     bg = f'<rect width="{width}" height="{height}" fill="{background}"/>' if background else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
             f'viewBox="0 0 {width} {height}">{bg}' + "".join(body) + "</svg>\n")
+
+
+def tablet(c, shot, x, y, screen_w, screen_h):
+    """The screenshot on the glass of a tablet held upright, its top-left at (x, y)."""
+    bezel, radius = 18, 38
+    w, h = screen_w + 2 * bezel, screen_h + 2 * bezel
+    with open(shot, "rb") as handle:
+        data = base64.b64encode(handle.read()).decode()
+    return [
+        '<defs>'
+        '<filter id="tm-shadow" x="-30%" y="-20%" width="160%" height="140%">'
+        '<feGaussianBlur stdDeviation="28"/></filter>'
+        f'<clipPath id="tm-glass"><rect x="{x + bezel}" y="{y + bezel}" width="{screen_w}" '
+        f'height="{screen_h}" rx="{radius - bezel + 4}"/></clipPath>'
+        '</defs>',
+        f'<rect x="{x + 24}" y="{y + 40}" width="{w - 48}" height="{h - 40}" rx="{radius}" fill="#000" '
+        'opacity="0.55" filter="url(#tm-shadow)"/>',
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{radius}" fill="#05070b" '
+        f'stroke="{c["edge"]}" stroke-width="2"/>',
+        f'<image x="{x + bezel}" y="{y + bezel}" width="{screen_w}" height="{screen_h}" '
+        f'preserveAspectRatio="xMidYMid slice" clip-path="url(#tm-glass)" '
+        f'href="data:image/png;base64,{data}"/>',
+    ]
+
+
+def callout(c, shot, crop, x, y, scale):
+    """A part of the screenshot, crop=(left, top, width, height), lifted off the glass and enlarged."""
+    cl, ct, cw, ch = crop
+    w, h = cw * scale, ch * scale
+    with open(shot, "rb") as handle:
+        data = base64.b64encode(handle.read()).decode()
+    return [
+        f'<rect x="{x + 16}" y="{y + 30}" width="{w - 32}" height="{h - 20}" rx="14" fill="#000" '
+        'opacity="0.6" filter="url(#tm-shadow)"/>',
+        f'<svg x="{x}" y="{y}" width="{w}" height="{h}" viewBox="{cl} {ct} {cw} {ch}">'
+        f'<image width="1200" height="1920" href="data:image/png;base64,{data}"/></svg>',
+    ]
+
+
+def glow(cx, cy, r, color, opacity, name):
+    return [f'<defs><radialGradient id="{name}"><stop offset="0" stop-color="{color}" '
+            f'stop-opacity="{opacity}"/><stop offset="1" stop-color="{color}" stop-opacity="0"/>'
+            f'</radialGradient></defs>',
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#{name})"/>']
+
+
+def preview(c):
+    """The catalog card: the real panel and keyboard on a screen turned upright.
+
+    The catalog crops the card to about 2.2:1, cutting some 80px off the top
+    and the bottom, so everything that matters sits between y=90 and y=810.
+    """
+    width, height = 1600, 900
+    shot = os.path.join(ROOT, "assets", "shots", "tablet-portrait.png")
+    screen_w, screen_h = 444, 710
+    tx, ty = 1010, (height - screen_h) / 2 - 18
+    body = [
+        *glow(tx + 240, height / 2, 560, c["accent"], 0.24, "tm-blue"),
+        *glow(tx + 420, height / 2 + 200, 380, "#e0508f", 0.18, "tm-pink"),
+        *tablet(c, shot, tx, ty, screen_w, screen_h),
+        # The Tablet Mode panel, as it opens under its bar button.
+        *callout(c, shot, (730, 34, 376, 270), 730, 150, 1.3),
+        # Who it is for, then what it is, then what goes wrong without it.
+        f'<text x="122" y="236" font-family="{MONO}" font-size="21" font-weight="700" '
+        f'letter-spacing="2.5" fill="{c["accent"]}">FOR 2-IN-1 LAPTOPS THAT FOLD 360°</text>',
+        f'<text x="116" y="330" font-family="{FONT}" font-size="92" font-weight="800" '
+        f'letter-spacing="-2" fill="{c["text"]}">Tablet Mode</text>',
+        f'<text x="120" y="392" font-family="{FONT}" font-size="34" fill="{c["muted"]}">'
+        'Fold it into a tablet. Omarchy follows.</text>',
+    ]
+    for i, (fix, problem) in enumerate(FIXES):
+        y = 482 + i * 88
+        body += check(c, "", 134, y)[:2]
+        body += [f'<text x="162" y="{y + 10}" font-family="{FONT}" font-size="29" font-weight="700" '
+                 f'fill="{c["text"]}">{fix}</text>',
+                 f'<text x="162" y="{y + 44}" font-family="{FONT}" font-size="23" '
+                 f'fill="{c["muted"]}">{problem}</text>']
+    return svg(width, height, body, background=c["bg"])
 
 
 def write(path, text):
@@ -206,20 +295,12 @@ def main():
     for name, c in THEMES.items():
         write("assets/hero-%s.svg" % name, svg(1280, 470, cards(c, 25, 420)))
 
-    c = THEMES["dark"]
-    title = [
-        *icon_shapes(60, 46, 72),
-        f'<text x="152" y="99" font-family="{FONT}" font-size="52" font-weight="800" fill="{c["text"]}">'
-        f'Tablet Mode<tspan dx="16" font-weight="400" fill="{c["muted"]}">for Omarchy</tspan></text>',
-        f'<text x="60" y="162" font-family="{FONT}" font-size="26" fill="{c["muted"]}">'
-        'For 2-in-1 laptops that fold back 360°. Fold it, and Omarchy follows.</text>',
-    ]
-    preview = os.path.join(ROOT, "assets", ".preview.svg")
-    with open(preview, "w") as handle:
-        handle.write(svg(1280, 640, title + cards(c, 195, 420), background=c["bg"]))
-    subprocess.run(["rsvg-convert", "-w", "1280", "-h", "640", "-o",
-                    os.path.join(ROOT, "preview.png"), preview], check=True)
-    os.remove(preview)
+    source = os.path.join(ROOT, "assets", ".preview.svg")
+    with open(source, "w") as handle:
+        handle.write(preview(THEMES["dark"]))
+    subprocess.run(["rsvg-convert", "-w", "1600", "-h", "900", "-o",
+                    os.path.join(ROOT, "preview.png"), source], check=True)
+    os.remove(source)
 
 
 if __name__ == "__main__":

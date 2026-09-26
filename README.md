@@ -5,14 +5,15 @@
 <h1 align="center">Tablet Mode for Omarchy</h1>
 
 <p align="center">
-  <b>Fold your 2-in-1 into a tablet. Omarchy follows.</b><br>
-  The screen turns with you, touch and pen land where you tap, and the
-  keyboard underneath switches off. Open it, and it is a laptop again.
+  <b>For 2-in-1 laptops that fold back 360°.</b><br>
+  Fold it into a tablet and Omarchy follows: the screen turns with you, touch
+  and pen land where you tap, and the keyboard underneath switches off. Open
+  it, and it is a laptop again.
 </p>
 
 <p align="center">
-  <sub>For laptops whose screen folds back 360°. Built and tested on a ThinkPad
-  X1 Yoga Gen 6 — <a href="#will-it-work-on-my-laptop">will it work on mine?</a></sub>
+  <sub>Built and tested on a ThinkPad X1 Yoga Gen 6 —
+  <a href="#will-it-work-on-my-laptop">will it work on mine?</a></sub>
 </p>
 
 <p align="center">
@@ -356,8 +357,10 @@ The suite works in a temporary `HOME` with `hyprctl` stubbed out, so it never
 touches the running compositor or your config.
 
 The icon, the illustrations and `preview.png` are drawn by `assets/make-art`;
-change the words or colors there and run it again. `assets/panel.png` is a
-screenshot of the panel.
+change the words or colors there and run it again. The preview is built around
+`assets/shots/tablet-portrait.png`, a screenshot of the screen turned upright
+with the panel and an on-screen keyboard open, taken with the Tokyo Night
+theme. `assets/panel.png` is a screenshot of the panel.
 
 ## Uninstall
 
