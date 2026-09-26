@@ -42,7 +42,6 @@ Panel {
   // The daemon reads these from shell.json itself and follows the file, so
   // saving one is all it takes to apply it.
   readonly property string mapping: setting("mapping", "standard")
-  readonly property bool alwaysShow: setting("alwaysShow", false) === true
   readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
   function save(name, value) {
@@ -52,10 +51,6 @@ Panel {
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
   }
 
-  // Open as a laptop, nothing turns and the keyboard is the real one, so the
-  // button stays out of the bar until the machine folds, unless alwaysShow is on. It stays while a
-  // lock is held, so the lock can be let go, and wherever no fold is reported.
-  visible: !hasFoldSensor || alwaysShow || folded || locked || opened
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 

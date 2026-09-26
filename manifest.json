@@ -6,7 +6,7 @@
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded and an on-screen keyboard plugin comes up. The bar button appears once folded, to lock the rotation",
+  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, the built-in keyboard goes quiet while folded and an on-screen keyboard plugin comes up. The bar button locks the rotation and shows the keyboard.",
   "kinds": [
     "service",
     "bar-widget"
@@ -17,13 +17,12 @@
   },
   "barWidget": {
     "displayName": "Tablet Mode",
-    "description": "Shows up once the machine is folded. Tap it to lock the rotation, turn the screen by hand, or show and hide the on-screen keyboard. Middle-click turns the screen.",
+    "description": "Tap to lock the rotation, turn the screen by hand, or show and hide the on-screen keyboard. Middle-click turns the screen.",
     "category": "Hardware",
     "defaultSection": "right",
     "allowMultiple": false,
     "defaults": {
       "mapping": "standard",
-      "alwaysShow": false,
       "keyboardOnFold": true
     },
     "schema": [
@@ -39,13 +38,6 @@
         ],
         "defaultValue": "standard",
         "description": "How the accelerometer is mounted. Standard is right for almost every machine. If the screen turns the wrong way, pick the pair that comes out mirrored: portrait-swapped for the two upright positions, landscape-swapped for the two flat ones, rotated-180 when everything is upside down."
-      },
-      {
-        "key": "alwaysShow",
-        "type": "boolean",
-        "label": "Always show the button",
-        "defaultValue": false,
-        "description": "Off keeps the button out of the bar until the machine is folded. On keeps it there in laptop mode too."
       },
       {
         "key": "keyboardOnFold",

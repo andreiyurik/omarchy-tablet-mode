@@ -69,8 +69,8 @@ compositor only, and puts its changes back after every config reload.
 - **Rotates like a tablet, not a phone.** Only once folded, so a laptop on your
   knees never flips. A machine that never reports its fold still turns.
 - **Instant.** The screen turns live, without reloading your config.
-- **Made for fingers.** Fold the machine and a button appears in the bar. It
-  opens a panel of big targets: the keyboard, and the rotation lock.
+- **Made for fingers.** A button in the bar opens a panel of big targets: the
+  keyboard, and the rotation lock.
 - **At home in Omarchy.** Your touchpad toggle, clamshell mode, external
   monitors and hyprmoncfg keep working as before.
 - **Built for real life.** Suspend while folded, config reloads and a sensor
@@ -134,11 +134,9 @@ works and is not in the table, please file a
 
 <img src="assets/panel.png" width="300" align="right" alt="The Tablet Mode panel: the machine's state, a button to show or hide the on-screen keyboard, buttons to turn the screen left, lock it and turn it right, and a Settings button.">
 
-Fold the machine and the rotation icon appears in the bar; open it again and
-the icon goes, since a laptop has nothing to turn. It stays while a lock is
-held, and always on a machine with no fold sensor. A tap opens the panel, which
-says what the machine and the screen are doing and holds the two things a
-folded machine is reached for:
+The rotation icon sits in the bar. A tap opens the panel, which says what the
+machine and the screen are doing and holds the two things a folded machine is
+reached for:
 
 - **Keyboard.** Shows or hides the on-screen keyboard. See
   [Typing while folded](#typing-while-folded).
