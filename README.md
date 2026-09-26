@@ -272,9 +272,8 @@ without a config reload, and nothing is written into `~/.config/hypr`.
 
 **A reload is followed, not fought.** A reload rebuilds monitor rules and binds
 from the files: the panel straightens while the touchscreen stays turned, and
-the switch binds are gone. The
-daemon listens on Hyprland's event socket and, the moment a reload finishes,
-puts all of it back. Because it comes after every file, this also wins over
+the switch binds are gone. The daemon listens on Hyprland's event socket and,
+the moment a reload finishes, puts all of it back. Because it comes after every file, this also wins over
 tools whose monitor rules load late, such as hyprmoncfg. The orientation last
 applied on purpose is kept in `~/.local/state/omarchy/tablet-mode/`.
 
