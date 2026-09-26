@@ -251,7 +251,7 @@ Panel {
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: "Turning with the machine needs the iio-sensor-proxy package. "
-            + "Run omarchy pkg add iio-sensor-proxy, or add it from the Omarchy menu under Install › Package; "
+            + "Add it from the Omarchy menu under Install › Package; "
             + "the screen starts following the sensor as soon as it is there."
           color: root.bar.foreground
           opacity: 0.8

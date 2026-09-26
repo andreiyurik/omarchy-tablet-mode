@@ -5,26 +5,32 @@
 <h1 align="center">Tablet Mode for Omarchy</h1>
 
 <p align="center">
-  <b>For 2-in-1 laptops whose screen folds back 360°.</b><br>
-  Fold it into a tablet and Omarchy follows: the screen turns with you, touch
-  stays on target, and the keyboard underneath goes quiet.
+  <b>Fold your 2-in-1 into a tablet. Omarchy follows.</b><br>
+  The screen turns with you, touch and pen land where you tap, and the
+  keyboard underneath switches off. Open it, and it is a laptop again.
 </p>
 
 <p align="center">
-  <sub>ThinkPad Yoga · HP Spectre and Envy x360 · Dell XPS and Latitude 2-in-1 ·
-  Lenovo Yoga · ASUS Zenbook Flip — <a href="#will-it-work-on-my-laptop">will it work on mine?</a></sub>
+  <sub>For laptops whose screen folds back 360°. Built and tested on a ThinkPad
+  X1 Yoga Gen 6 — <a href="#will-it-work-on-my-laptop">will it work on mine?</a></sub>
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#will-it-work-on-my-laptop">Supported laptops</a> ·
+  <a href="#typing-while-folded">Typing while folded</a> ·
+  <a href="#limitations">Limitations</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml"><img src="https://github.com/andreiyurik/omarchy-tablet-mode/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/Omarchy-plugin-7aa2f7" alt="Omarchy plugin">
   <img src="https://img.shields.io/badge/tested%20on-ThinkPad%20X1%20Yoga-58a6ff" alt="Tested on ThinkPad X1 Yoga">
-  <img src="https://img.shields.io/github/license/andreiyurik/omarchy-tablet-mode?color=9ece6a" alt="MIT license">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/andreiyurik/omarchy-tablet-mode?color=9ece6a" alt="MIT license"></a>
 </p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard is a tap away.">
+  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard plugin is a tap away.">
 </picture>
 
 ## The problem
@@ -46,19 +52,21 @@ it becomes a tablet. Open it and it is a laptop again.
 omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
 ```
 
-That's it — fold your laptop.
+Two things come from outside the plugin:
 
-Turning the screen with the machine takes one package from the Arch
-repositories, **iio-sensor-proxy**, which reads the accelerometer:
+- **iio-sensor-proxy** reads the accelerometer, so the screen can turn with
+  the machine. Add it from the Omarchy menu under **Install › Package**. Until
+  it is there, the panel says so, and everything else already works.
+- **An on-screen keyboard plugin**, for typing while folded, since the
+  built-in keyboard is off then. Tablet Mode does not draw one of its own; see
+  [Typing while folded](#typing-while-folded) for the ones it works with.
 
-```bash
-omarchy pkg add iio-sensor-proxy
-```
+Then fold your laptop.
 
-Until it is there, the panel says so, and everything else already works.
-
-The plugin writes nothing into `~/.config/hypr`. It changes the running
-compositor only, and puts its changes back after every config reload.
+No root, no install script, no system services, and nothing written to
+`~/.config/hypr`: the plugin changes the running compositor only, and puts its
+changes back after every config reload. Disable it, and your laptop is simply
+a laptop again.
 
 ## What you get
 
@@ -69,7 +77,7 @@ compositor only, and puts its changes back after every config reload.
 | Touch or draw | Taps land off to the side | Touch and pen follow the screen |
 | Work with it on your knees | — | Nothing flips until you fold it |
 | Read in bed | The screen spins as you shift | Lock it from the bar |
-| Need to type while folded | No keys to reach | An on-screen keyboard a tap away |
+| Need to type while folded | No keys to reach | An on-screen keyboard plugin a tap away |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
 ## Why it feels native

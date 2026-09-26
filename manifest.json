@@ -6,7 +6,7 @@
   "author": "Andrei Yurik",
   "license": "MIT",
   "homepage": "https://github.com/andreiyurik/omarchy-tablet-mode",
-  "description": "Makes tablet mode work on a 2-in-1: the screen follows the accelerometer, the touchscreen and pen follow the screen, and the built-in keyboard goes quiet while folded. The bar button locks the rotation and opens an on-screen keyboard plugin, which goes away when you open the machine.",
+  "description": "Fold your 2-in-1 into a tablet and Omarchy follows: the screen turns, touch and pen stay on target, the keyboard switches off. Rotation lock in the bar.",
   "kinds": [
     "service",
     "bar-widget"
