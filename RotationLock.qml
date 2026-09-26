@@ -43,6 +43,7 @@ Panel {
   // saving one is all it takes to apply it.
   readonly property string mapping: setting("mapping", "auto")
   readonly property bool allPositions: setting("allPositions", false) === true
+  readonly property bool alwaysShow: setting("alwaysShow", false) === true
   readonly property bool keyboardOnFold: setting("keyboardOnFold", true) === true
 
   function save(name, value) {
@@ -53,10 +54,10 @@ Panel {
   }
 
   // Open as a laptop, nothing turns and the keyboard is the real one, so the
-  // button stays out of the bar until the machine folds. It stays while a
+  // button stays out of the bar until the machine folds, unless alwaysShow is on. It stays while a
   // lock is held, so the lock can be let go, and wherever the screen turns
   // as a laptop too.
-  visible: !hasFoldSensor || allPositions || folded || locked || opened
+  visible: !hasFoldSensor || alwaysShow || allPositions || folded || locked || opened
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 

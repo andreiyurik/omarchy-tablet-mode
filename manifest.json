@@ -24,6 +24,7 @@
     "defaults": {
       "mapping": "auto",
       "allPositions": false,
+      "alwaysShow": false,
       "keyboardOnFold": true
     },
     "schema": [
@@ -47,6 +48,13 @@
         "label": "Rotate in laptop mode too",
         "defaultValue": false,
         "description": "Off means the accelerometer is followed only once the lid is folded back past the keyboard, which is how a tablet behaves and why a laptop on your knees does not flip. On follows it always, which is the setting for a machine with no fold sensor -- there the daemon rotates in every position regardless."
+      },
+      {
+        "key": "alwaysShow",
+        "type": "boolean",
+        "label": "Always show the button",
+        "defaultValue": false,
+        "description": "Off keeps the button out of the bar until the machine is folded. On keeps it there in laptop mode too, without turning the screen -- that is what Rotate in laptop mode too is for."
       },
       {
         "key": "keyboardOnFold",
