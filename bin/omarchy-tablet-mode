@@ -56,17 +56,18 @@ BINDS_GLOBAL = "omarchy_tablet_mode_binds"
 SENSOR_PROXY_POLICY = "/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf"
 
 # On-screen keyboards from the Omarchy plugin directory, in order of
-# preference: plugin id, name, and the omarchy-shell target and methods that
-# show, hide and toggle it. Two are plain panels, opened and closed through the
-# shell's own summon and hide; one has an IPC target of its own. The first one
+# preference, the tested one first: plugin id, name, and the omarchy-shell
+# target and methods that show, hide and toggle it. Two are plain panels,
+# opened and closed through the shell's own summon and hide; one has an IPC
+# target of its own, untested, and so comes last. The first one
 # enabled is the one the panel's button opens, and opening the machine puts
 # it away.
 KEYBOARDS = [
+    ("io.github.abdxdev.onscreen-keyboard", "On-Screen Keyboard", None),
+    ("io.github.frostmute.tablet-keyboard", "Omaqwerty", None),
     ("io.github.mtolhuys.onscreen-keyboard", "On-Screen Keyboard",
      {"show": ["onscreen-keyboard", "show"], "hide": ["onscreen-keyboard", "hide"],
       "toggle": ["onscreen-keyboard", "toggle"]}),
-    ("io.github.abdxdev.onscreen-keyboard", "On-Screen Keyboard", None),
-    ("io.github.frostmute.tablet-keyboard", "Omaqwerty", None),
 ]
 
 # Omarchy's toggles. Hardcoded to ~/.local/state, as its toggle tools write

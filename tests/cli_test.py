@@ -344,6 +344,16 @@ class KeyboardTest(CliTestCase):
         self.enable("io.github.frostmute.tablet-keyboard", "io.github.abdxdev.onscreen-keyboard")
         self.assertEqual(self.cli.find_keyboard()[0], "io.github.abdxdev.onscreen-keyboard")
 
+    def test_the_tested_keyboard_wins_over_an_untested_one(self):
+        self.enable("io.github.mtolhuys.onscreen-keyboard", "io.github.abdxdev.onscreen-keyboard")
+        self.assertEqual(self.cli.find_keyboard()[0], "io.github.abdxdev.onscreen-keyboard")
+
+    def test_the_readme_lists_the_keyboards_in_the_order_they_are_used(self):
+        with open(os.path.join(ROOT, "README.md")) as handle:
+            readme = handle.read()
+        positions = [readme.index("`%s`" % k[0]) for k in self.cli.KEYBOARDS]
+        self.assertEqual(positions, sorted(positions))
+
     def test_a_panel_keyboard_is_summoned_and_hidden_through_the_shell(self):
         keyboard = next(k for k in self.cli.KEYBOARDS if k[0].endswith("abdxdev.onscreen-keyboard"))
         self.assertEqual(self.cli.keyboard_command(keyboard, "show"),

@@ -216,9 +216,15 @@ field has the focus, which is when a phone or an iPad shows one.
 | [Omaqwerty](https://github.com/frostmute/omarchy-omaqwerty) | `io.github.frostmute.tablet-keyboard` | Expected to work: opened the same way |
 | [On-Screen Keyboard](https://github.com/mtolhuys/omarchy-onscreen-keyboard) by mtolhuys | `io.github.mtolhuys.onscreen-keyboard` | Expected to work: through its documented `omarchy-shell onscreen-keyboard` commands |
 
-With more than one enabled, the first in this table is used. The panel's
-**Keyboard** button, a bigger target than a bar icon, shows or hides it too,
-as does:
+With more than one enabled, the first in this table is used. A keyboard not
+in it is not recognised: its own bar icon still works, but the panel offers
+no **Keyboard** button and opening the machine does not put it away. If you
+use another one, please
+[open an issue](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new)
+naming it, so it can be added.
+
+The panel's **Keyboard** button, a bigger target than a bar icon, shows or
+hides it too, as does:
 
 ```bash
 ~/.config/omarchy/plugins/andreiyurik.tablet-mode/bin/omarchy-tablet-mode keyboard toggle
