@@ -57,7 +57,7 @@ Panel {
   readonly property string status: {
     if (!sensorInstalled) return "Needs iio-sensor-proxy"
     if (locked) return "Rotation locked"
-    if (!sensorAvailable) return "Turned by hand"
+    if (!sensorAvailable) return "No accelerometer"
     if (hasFoldSensor && !folded) return "Rotates once folded"
     return "Following the sensor"
   }
@@ -254,7 +254,7 @@ Panel {
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: "Turning with the machine needs the iio-sensor-proxy package. "
-            + "Add it from the Omarchy menu, under Install › Package; "
+            + "Run omarchy pkg add iio-sensor-proxy, or add it from the Omarchy menu under Install › Package; "
             + "the screen starts following the sensor as soon as it is there."
           color: root.bar.foreground
           opacity: 0.8

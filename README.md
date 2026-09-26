@@ -43,9 +43,13 @@ omarchy plugin add https://github.com/andreiyurik/omarchy-tablet-mode --enable
 That's it — fold your laptop.
 
 Turning the screen with the machine takes one package from the Arch
-repositories, **iio-sensor-proxy**, which reads the accelerometer. Add it from
-the Omarchy menu under *Install › Package*. Until it is there, the panel says
-so, and everything else already works.
+repositories, **iio-sensor-proxy**, which reads the accelerometer:
+
+```bash
+omarchy pkg add iio-sensor-proxy
+```
+
+Until it is there, the panel says so, and everything else already works.
 
 The plugin writes nothing into `~/.config/hypr`. It changes the running
 compositor only, and puts its changes back after every config reload.

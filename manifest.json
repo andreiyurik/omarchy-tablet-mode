@@ -42,7 +42,7 @@
       {
         "key": "keyboardOnFold",
         "type": "boolean",
-        "label": "Show the on-screen keyboard when folded",
+        "label": "Keyboard when folded",
         "defaultValue": true,
         "description": "With an on-screen keyboard plugin enabled (On-Screen Keyboard or Omaqwerty from plugins.omarchy.org), folding the machine brings it up and opening it puts it away again. A keyboard opened by hand is left alone."
       }
