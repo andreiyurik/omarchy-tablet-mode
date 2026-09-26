@@ -247,18 +247,6 @@ class DetectionTest(CliTestCase):
         self.assertEqual(self.cli.detect_tablet_switches(self.devices, self.kernel),
                          ["ThinkPad Extra Buttons", "Intel HID switches"])
 
-    def test_only_a_built_in_pen_counts_as_the_pen(self):
-        kernel = self.kernel + [kernel_device("Wacom HID 5276 Pen",
-                                              ID_INTEGRATION="internal", ID_INPUT_TABLET="1")]
-        devices = dict(self.devices, tablets=self.devices["tablets"]
-                       + [{"name": "wacom-hid-5276-pen"}])
-        self.assertEqual(self.cli.detect_pens(devices, kernel), ["wacom-hid-5276-pen"])
-        self.assertEqual(self.cli.detect_pens(self.devices, self.kernel), [])
-
-    def test_without_udev_no_tablet_is_taken_for_a_built_in_pen(self):
-        kernel = [dict(d, props={}) for d in self.kernel]
-        self.assertEqual(self.cli.detect_pens(self.devices, kernel), [])
-
     def test_without_udev_names_are_the_fallback(self):
         kernel = [dict(d, props={}) for d in self.kernel]
         self.assertEqual(self.cli.detect_internal_devices(self.devices, kernel),
@@ -401,14 +389,6 @@ class BindsTest(CliTestCase):
     def test_a_quote_in_a_switch_name_stays_inside_the_string(self):
         lua = "\n".join(self.cli.bind_statements({"tablet_switch": ['Odd "Switch"']}))
         self.assertIn('"switch:on:Odd \\"Switch\\""', lua)
-
-
-class PenTest(CliTestCase):
-    def test_the_cursor_hides_for_the_pen_and_comes_back(self):
-        self.assertEqual(self.cli.pen_statements(True),
-                         ["hl.config({ cursor = { hide_on_tablet = true } })"])
-        self.assertEqual(self.cli.pen_statements(False),
-                         ["hl.config({ cursor = { hide_on_tablet = false } })"])
 
 
 class KeyboardTest(CliTestCase):

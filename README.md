@@ -59,7 +59,6 @@ compositor only, and puts its changes back after every config reload.
 | Touch or draw | Taps land off to the side | Touch and pen follow the screen |
 | Work with it on your knees | — | Nothing flips until you fold it |
 | Read in bed | The screen spins as you shift | Lock it from the bar |
-| Write with the pen | The cursor sits under the tip | The cursor hides while you write |
 | Need to type while folded | No keys to reach | An on-screen keyboard comes up |
 | Plug in a monitor | The pen spreads across both screens | The pen stays on the laptop's panel |
 
@@ -207,36 +206,11 @@ table.
 
 ## The pen
 
-The plugin binds the built-in pen and touchscreen to the laptop's own panel and
-turns them with it. That alone fixes the most common complaint: left unbound,
-Hyprland spreads the pen across every monitor, so with an external display
-connected the cursor lands far from the tip.
-
-With a pen built in, the cursor hides while you write and comes back the
-moment a mouse or touchpad moves: a pointer sitting under the tip only gets in
-the way. This is Hyprland's `cursor:hide_on_tablet`, which applies to every pen
-and tablet at once, and which the plugin turns off again when it is disabled.
-Pressure is left to the pen and to your apps, whose own curves (Krita's,
-Xournal++'s) are the place to tune it.
-
-What the plugin deliberately leaves alone:
-
-- **Palm rejection is already there.** The kernel's `wacom` driver ignores
-  touch while the pen is near the screen, and libinput does the same for pens
-  it pairs with a touchscreen.
-- **Taps and buttons reach only apps that speak the Wayland tablet protocol.**
-  Elsewhere the pen just moves the cursor, and Hyprland does not turn the
-  stylus buttons into mouse clicks. Remapping them system-wide means reading
-  the pen's raw input device, which Omarchy deliberately does not let
-  ordinary programs do: raw input access is also what a keylogger needs. For
-  writing and drawing, use apps built for the pen: Xournal++, Rnote or Krita,
-  all in the Arch repositories.
-- **Eraser buttons** are the `input.tablettool` options `eraser_button_mode`
-  and `eraser_button_override` in the
-  [Hyprland wiki](https://wiki.hypr.land/Configuring/Basics/Variables/).
-- **Touch dying after using the pen** is a known driver bug on some Wacom AES
-  machines ([input-wacom#310](https://github.com/linuxwacom/input-wacom/issues/310));
-  reloading the `wacom` kernel module brings it back until it is fixed.
+If your machine has a pen, it needs nothing of its own: the plugin binds the
+built-in touchscreen and pen to the laptop's panel and turns them with it, so
+with an external display connected the pen still lands under the tip. Anything
+else about the pen is Hyprland's to configure, in its `input.tablet` and
+`cursor` options (`cursor:hide_on_tablet` hides the pointer while you write).
 
 ## Typing while folded
 
@@ -327,9 +301,9 @@ Hyprland refuses `hyprctl keyword`, but `eval` changes the running compositor
 directly — the same way Omarchy's own monitor scaling does. The screen turns
 without a config reload, and nothing is written into `~/.config/hypr`.
 
-**A reload is followed, not fought.** A reload rebuilds monitor rules, binds
-and options from the files: the panel straightens while the touchscreen stays
-turned, the switch binds are gone, and pen options are what the files say. The
+**A reload is followed, not fought.** A reload rebuilds monitor rules and binds
+from the files: the panel straightens while the touchscreen stays turned, and
+the switch binds are gone. The
 daemon listens on Hyprland's event socket and, the moment a reload finishes,
 puts all of it back. Because it comes after every file, this also wins over
 tools whose monitor rules load late, such as hyprmoncfg. The orientation last
@@ -376,8 +350,8 @@ through file notifications. A sysfs fold sensor, which raises no events, is the
 only thing read on a timer.
 
 **Disabled means inert.** When the daemon is stopped because the plugin was
-disabled or removed, it turns the panel upright, gives the keyboard back, takes
-its switch binds down and returns the pen options to Hyprland's defaults.
+disabled or removed, it turns the panel upright, gives the keyboard back and
+takes its switch binds down.
 
 ## Upgrading from 1.3 or earlier
 

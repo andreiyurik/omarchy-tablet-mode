@@ -310,14 +310,6 @@ def detect_touch_devices(devices, kernel):
     return [n for n in names if matches(n, internal)]
 
 
-def detect_pens(devices, kernel):
-    """The built-in pen alone, which decides whether the panel offers pen
-    settings. Without udev to ask, a tablet is not assumed to be built in."""
-    internal = internal_names(kernel, "TABLET") or set()
-    return [d.get("name") for d in devices.get("tablets", [])
-            if d.get("name") and printable(d["name"]) and matches(d["name"], internal)]
-
-
 def detect_internal_devices(devices, kernel):
     """Built-in keyboard and pointers, which face the table once folded back.
 
@@ -398,7 +390,6 @@ def detect():
         "model": detect_model(),
         "panel": panel_name(detect_panel()),
         "touch": detect_touch_devices(devices, kernel),
-        "pen": detect_pens(devices, kernel),
         "internal": detect_internal_devices(devices, kernel),
         "tablet_switch": detect_tablet_switches(devices, kernel),
         "tablet_sysfs": detect_tablet_sysfs(),
@@ -417,7 +408,7 @@ def panel_name(panel):
 # -------------------------------------------------------------------- state
 
 
-LIST_KEYS = ("touch", "pen", "internal", "tablet_switch")
+LIST_KEYS = ("touch", "internal", "tablet_switch")
 
 
 def read_conf():
@@ -648,17 +639,6 @@ def bind_statements(conf, bind=True):
     return statements
 
 
-def pen_statements(hide):
-    """Lua that hides the cursor while the pen is in use, or stops hiding it.
-
-    A pointer sitting under the tip only gets in the way of writing, and it
-    comes back the moment a mouse or touchpad moves, so a machine with a pen
-    built in gets this without asking. The option is global in Hyprland, for
-    every pen and tablet, which on a laptop is the one pen it has.
-    """
-    return ["hl.config({ cursor = { hide_on_tablet = %s } })" % ("true" if hide else "false")]
-
-
 # ----------------------------------------------------------------- rotation
 
 
@@ -794,7 +774,6 @@ def status(conf=None):
         "locked": locked(),
         "folded": folded(conf),
         "hasFoldSensor": has_fold_sensor(conf),
-        "hasPen": bool(conf.get("pen")),
         "sensorInstalled": sensor_proxy_installed(),
         "keyboard": (find_keyboard() or (None, None))[1],
     }
@@ -829,11 +808,10 @@ def run_daemon(mapping_override=None, all_positions=False):
     if not has_fold_sensor(conf):
         log("no fold sensor on this machine; rotating in every position")
 
-    # "wired" is whether the switch binds are in place, and "pen" whether the
-    # cursor is being hidden for the pen. A freshly loaded config has neither.
+    # "wired" is whether the switch binds are in place. A freshly loaded
+    # config has none.
     state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None, "wired": False, "pen": False,
-             "lid": None, "keyboard": False}
+             "mapping": None, "wired": False, "lid": None, "keyboard": False}
     loop = GLib.MainLoop()
 
     def emit():
@@ -873,9 +851,6 @@ def run_daemon(mapping_override=None, all_positions=False):
             log("accelerometer mounting: %s" % mapping_name)
             state["mapping"] = mapping_name
         tablet_only = not (all_positions or settings.get("allPositions") is True)
-
-        if conf.get("pen") and not state["pen"]:
-            state["pen"] = hypr_eval(pen_statements(True))
 
         proxy = state["proxy"]
         value = proxy.get_cached_property("AccelerometerOrientation") if proxy else None
@@ -959,8 +934,7 @@ def run_daemon(mapping_override=None, all_positions=False):
 
     # A config reload rebuilds monitor rules, binds and options from the files:
     # the panel straightens while the touchscreen stays turned, the switch
-    # binds are gone, and the pen options are whatever the files say. The
-    # daemon hears the reload and puts all of it back. The same goes for the
+    # binds are gone. The daemon hears the reload and puts all of it back. The same goes for the
     # panel coming back on.
     def watch_hyprland():
         runtime = os.environ.get("XDG_RUNTIME_DIR", "")
@@ -984,7 +958,6 @@ def run_daemon(mapping_override=None, all_positions=False):
             event = line.split(">>", 1)[0]
             if event == "configreloaded":
                 state["wired"] = False
-                state["pen"] = False
             if event in ("configreloaded", "monitoradded", "monitoraddedv2"):
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
@@ -1047,18 +1020,16 @@ def run_daemon(mapping_override=None, all_positions=False):
                 pass
         # A shell restart leaves things as they are, and the next daemon picks
         # up from there. A disable or removal must not leave the machine turned
-        # with its keyboard switched off, or with its binds and pen options.
+        # with its keyboard switched off, or with its binds.
         if not plugin_enabled():
-            restore(state["pen"])
+            restore()
     return 0
 
 
-def restore(pen=False):
+def restore():
     apply_rotation(0)
     apply_input(False)
     hypr_eval(bind_statements({}, bind=False))
-    if pen:
-        hypr_eval(pen_statements(False))
 
 
 # -------------------------------------------------------------------- setup
