@@ -309,10 +309,16 @@ class BindsTest(CliTestCase):
         first_bind = next(i for i, s in enumerate(statements) if "hl.bind(" in s)
         self.assertLess(unbind, first_bind)
 
-    def test_unbinding_alone_binds_nothing(self):
-        lua = "\n".join(self.cli.bind_statements({"tablet_switch": ["X"]}, bind=False))
-        self.assertIn(":unbind()", lua)
-        self.assertNotIn("hl.bind(", lua)
+    def test_disabling_puts_things_back_and_reloads_last(self):
+        calls = []
+        with mock.patch.object(self.cli, "apply_rotation", lambda t: calls.append(("rotate", t))), \
+                mock.patch.object(self.cli, "apply_input", lambda f: calls.append(("input", f))), \
+                mock.patch.object(self.cli, "hyprctl",
+                                  lambda *a, parse_json=True: calls.append(a)):
+            self.cli.set_lock(True)
+            self.cli.restore()
+        self.assertEqual(calls, [("rotate", 0), ("input", False), ("reload",)])
+        self.assertFalse(self.cli.locked())
 
     def test_the_cli_path_is_quoted_for_the_shell_and_for_lua(self):
         with mock.patch.object(self.cli, "CLI", "/home/o'neil/bin/tablet mode"):

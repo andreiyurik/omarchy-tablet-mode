@@ -316,7 +316,8 @@ only thing read on a timer.
 
 **Disabled means inert.** When the daemon is stopped because the plugin was
 disabled or removed, it turns the panel upright, gives the keyboard back and
-takes its switch binds down.
+reloads Hyprland's config, which takes the switch binds down and rebuilds the
+panel's monitor rule from your files.
 
 ## Development
 

@@ -626,7 +626,7 @@ def apply_input(is_folded, conf=None):
     return hypr_eval(statements)
 
 
-def bind_statements(conf, bind=True):
+def bind_statements(conf):
     """Lua that binds every tablet mode switch to `fold`, first taking down
     whatever binds an earlier daemon in this session left.
 
@@ -642,8 +642,6 @@ def bind_statements(conf, bind=True):
         "for _, b in ipairs(%s) do pcall(function() b:unbind() end) end" % registry,
         "%s = {}" % registry,
     ]
-    if not bind:
-        return statements
     command = "'%s'" % CLI.replace("'", "'\\''")
     for name in dict.fromkeys(list(LAZY_TABLET_SWITCHES) + conf.get("tablet_switch", [])):
         for state in ("on", "off"):
@@ -982,9 +980,17 @@ def run_daemon(mapping_override=None):
 
 
 def restore():
+    """Leave the compositor as the user's files have it.
+
+    The panel and touchscreen are turned upright together and the built-in
+    keyboard is given back first, in case a reload leaves a device as the
+    plugin set it. The reload then takes down the switch binds and the
+    panel's monitor rule, rebuilding both from the files.
+    """
+    set_lock(False)
     apply_rotation(0)
     apply_input(False)
-    hypr_eval(bind_statements({}, bind=False))
+    hyprctl("reload", parse_json=False)
 
 
 # --------------------------------------------------------------------- main
