@@ -29,10 +29,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/andreiyurik/omarchy-tablet-mode?color=9ece6a" alt="MIT license"></a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard plugin is a tap away.">
-</picture>
+<img src="preview.png" alt="Tablet Mode on a 2-in-1 held upright: the Omarchy desktop has turned with the screen, the Tablet Mode panel is open under its bar button with Keyboard, Left, Lock and Right, and an on-screen keyboard sits at the bottom. Beside it: the screen turns with you instead of staying sideways, taps land under your finger instead of off to the side, and the keyboard switches off instead of typing into the table.">
 
 ## The problem
 
@@ -70,6 +67,11 @@ changes back after every config reload. Disable it, and your laptop is simply
 a laptop again.
 
 ## What you get
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img src="assets/hero-light.svg" alt="One laptop folding from laptop to tent to tablet. As a laptop, the keyboard stays on and the screen stays put. As a tent, the screen turns upright and touch stays on target. As a tablet, the keyboard switches off and an on-screen keyboard plugin is a tap away.">
+</picture>
 
 | When you… | Without Tablet Mode | With Tablet Mode |
 |---|---|---|
