@@ -65,6 +65,7 @@ SENSOR_PROXY_POLICY = "/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf"
 KEYBOARDS = [
     ("io.github.abdxdev.onscreen-keyboard", "On-Screen Keyboard", None),
     ("io.github.frostmute.tablet-keyboard", "Omaqwerty", None),
+    ("m44f4.omatouch", "OmaTouch", None),
     ("io.github.mtolhuys.onscreen-keyboard", "On-Screen Keyboard",
      {"show": ["onscreen-keyboard", "show"], "hide": ["onscreen-keyboard", "hide"],
       "toggle": ["onscreen-keyboard", "toggle"]}),
