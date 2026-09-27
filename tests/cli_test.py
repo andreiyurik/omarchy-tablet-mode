@@ -30,6 +30,7 @@ class CliTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = self.tmp.name
         self.cli = load_cli(self.home)
+        self.cli.UNREPORTED_FOLD = ()
         env = mock.patch.dict(os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "sig-now"})
         env.start()
         self.addCleanup(env.stop)
@@ -152,6 +153,13 @@ class ConfTest(CliTestCase):
 
 
 class FoldTest(CliTestCase):
+    def test_a_model_whose_fold_goes_unreported_follows_the_sensor(self):
+        self.cli.UNREPORTED_FOLD = ("Some Convertible",)
+        conf = {"tablet_switch": ["HP WMI hotkeys"], "tablet_sysfs": "/nonexistent"}
+        with mock.patch.object(self.cli, "detect_model", return_value="Some Convertible"):
+            self.assertFalse(self.cli.has_fold_sensor(conf))
+            self.assertIsNone(self.cli.folded(conf))
+
     def test_sysfs_wins_over_a_switch_event(self):
         sysfs = os.path.join(self.home, "tablet_mode")
         self.write(sysfs, "0\n")
