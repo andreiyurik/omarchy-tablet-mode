@@ -225,7 +225,7 @@ field has the focus, which is when a phone or an iPad shows one.
 |---|---|---|
 | [On-Screen Keyboard](https://github.com/abdxdev/omarchy-onscreen-keyboard) by abdxdev | `io.github.abdxdev.onscreen-keyboard` | **Tested**: opens on the panel and goes away |
 | [Omaqwerty](https://github.com/frostmute/omarchy-omaqwerty) | `io.github.frostmute.tablet-keyboard` | Expected to work: opened the same way |
-| [OmaTouch](https://github.com/M44F4/omatouch) by M44F4 | `m44f4.omatouch` | Expected to work: opened the same way |
+| [OmaTouch](https://github.com/M44F4/omatouch) by M44F4 | `m44f4.omatouch` | **Tested**: opens and closes from the panel |
 | [On-Screen Keyboard](https://github.com/mtolhuys/omarchy-onscreen-keyboard) by mtolhuys | `io.github.mtolhuys.onscreen-keyboard` | Expected to work: through its documented `omarchy-shell onscreen-keyboard` commands |
 
 With more than one enabled, the first in this table is used. A keyboard not
