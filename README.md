@@ -118,7 +118,7 @@ every position, since the plugin cannot tell laptop from tablet there.
 | Other ThinkPad Yoga (X1 Yoga, X13 Yoga, L13 Yoga) | `thinkpad_acpi` | Expected to work |
 | Lenovo Yoga 2-in-1 | `lenovo-ymc` or `intel-vbtn` | Expected to work |
 | HP Spectre x360, Envy x360, EliteBook x360 | `hp-wmi` or `intel-vbtn` | Expected to work |
-| HP ENVY x360 13-ar | none reported | **Tested**: rotation, touch and pen. The fold is never reported, so the screen follows the sensor in every position. The keyboard and touchpad switch off in hardware when folded |
+| HP ENVY x360 13-ar | none reported | **Tested**: rotation, touch and pen. Not yet confirmed: the panel under a finger, suspend while folded. The fold is never reported, so the screen follows the sensor in every position. The keyboard and touchpad switch off in hardware when folded |
 | Dell XPS 13 2-in-1, Latitude and Inspiron 2-in-1 | `intel-vbtn` | Expected to work |
 | ASUS Zenbook Flip, Vivobook Flip | `asus-nb-wmi` | Expected to work |
 | Microsoft Surface and other detachables | varies, often needs the linux-surface kernel | Untested |

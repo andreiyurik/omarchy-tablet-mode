@@ -30,7 +30,6 @@ class CliTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = self.tmp.name
         self.cli = load_cli(self.home)
-        self.cli.UNREPORTED_FOLD = ()
         env = mock.patch.dict(os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "sig-now"})
         env.start()
         self.addCleanup(env.stop)
@@ -153,12 +152,27 @@ class ConfTest(CliTestCase):
 
 
 class FoldTest(CliTestCase):
-    def test_a_model_whose_fold_goes_unreported_follows_the_sensor(self):
-        self.cli.UNREPORTED_FOLD = ("Some Convertible",)
-        conf = {"tablet_switch": ["HP WMI hotkeys"], "tablet_sysfs": "/nonexistent"}
-        with mock.patch.object(self.cli, "detect_model", return_value="Some Convertible"):
-            self.assertFalse(self.cli.has_fold_sensor(conf))
-            self.assertIsNone(self.cli.folded(conf))
+    def detect_as(self, model):
+        cli = self.cli
+        with mock.patch.object(cli, "detect_model", return_value=model), \
+                mock.patch.object(cli, "hyprctl", return_value={}), \
+                mock.patch.object(cli, "kernel_input_devices", return_value=[]), \
+                mock.patch.object(cli, "detect_panel", return_value=None), \
+                mock.patch.object(cli, "detect_tablet_switches", return_value=["HP WMI hotkeys"]), \
+                mock.patch.object(cli, "detect_tablet_sysfs", return_value="/sys/devices/platform/hp-wmi/tablet"):
+            return cli.detect()
+
+    def test_a_model_whose_fold_goes_unreported_has_no_fold_sensor(self):
+        conf = self.detect_as("HP ENVY x360 Convertible 13-ar0xxx")
+        self.assertEqual(conf["tablet_switch"], [])
+        self.assertIsNone(conf["tablet_sysfs"])
+        self.assertFalse(self.cli.has_fold_sensor(conf))
+
+    def test_other_models_keep_their_fold_sensor(self):
+        conf = self.detect_as("HP ENVY x360 Convertible 15-ee0xxx")
+        self.assertEqual(conf["tablet_switch"], ["HP WMI hotkeys"])
+        self.assertEqual(conf["tablet_sysfs"], "/sys/devices/platform/hp-wmi/tablet")
+        self.assertTrue(self.cli.has_fold_sensor(conf))
 
     def test_sysfs_wins_over_a_switch_event(self):
         sysfs = os.path.join(self.home, "tablet_mode")
