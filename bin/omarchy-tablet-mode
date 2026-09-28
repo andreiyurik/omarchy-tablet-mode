@@ -88,10 +88,10 @@ TABLET_SYSFS = [
     "/sys/devices/platform/hp-wmi/tablet",
 ]
 
-# Machines that offer a fold sensor but never report through it: the sysfs
-# state stays 0 and the switch never fires. Treated as reporting no fold, so
-# the screen follows the sensor in every position.
-UNREPORTED_FOLD = ("HP ENVY x360 Convertible 13-ar0xxx",)
+# Models, by DMI name prefix, that offer a fold sensor but never report
+# through it: the sysfs state stays 0 and the switch never fires. Detected as
+# having no fold sensor, so the screen follows the sensor in every position.
+UNREPORTED_FOLD = ("HP ENVY x360 Convertible 13-ar",)
 
 SW_TABLET_MODE = 1  # bit in the evdev switch capabilities, linux/input-event-codes.h
 
@@ -381,13 +381,15 @@ def detect_model():
 def detect():
     devices = hyprctl("devices") or {}
     kernel = kernel_input_devices()
+    model = detect_model()
+    unreported = bool(model) and model.startswith(UNREPORTED_FOLD)
     return {
-        "model": detect_model(),
+        "model": model,
         "panel": panel_name(detect_panel()),
         "touch": detect_touch_devices(devices, kernel),
         "internal": detect_internal_devices(devices, kernel),
-        "tablet_switch": detect_tablet_switches(devices, kernel),
-        "tablet_sysfs": detect_tablet_sysfs(),
+        "tablet_switch": [] if unreported else detect_tablet_switches(devices, kernel),
+        "tablet_sysfs": None if unreported else detect_tablet_sysfs(),
         "sensor_proxy": sensor_proxy_installed(),
     }
 
@@ -591,8 +593,6 @@ def fold_event():
 
 
 def has_fold_sensor(conf):
-    if detect_model() in UNREPORTED_FOLD:
-        return False
     return bool(conf.get("tablet_sysfs") or conf.get("tablet_switch")
                 or fold_event() is not None)
 
@@ -606,8 +606,6 @@ def folded(conf=None):
     sensor rather than stay put on a machine that never says it folded.
     """
     conf = conf or read_conf()
-    if detect_model() in UNREPORTED_FOLD:
-        return None
 
     sysfs = conf.get("tablet_sysfs")
     if sysfs:
