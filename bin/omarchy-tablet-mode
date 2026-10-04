@@ -113,7 +113,7 @@ TABLET_SYSFS = [
 # Models, by DMI name prefix, that offer a fold sensor but never report
 # through it: the sysfs state stays 0 and the switch never fires. Detected as
 # having no fold sensor, so the screen follows the sensor in every position.
-UNREPORTED_FOLD = ("HP ENVY x360 Convertible 13-ar",)
+UNREPORTED_FOLD = ("HP ENVY x360 Convertible 13-ar", "HP Envy x360 2-in-1 Laptop 16-ad")
 
 SW_TABLET_MODE = 1  # bit in the evdev switch capabilities, linux/input-event-codes.h
 
@@ -457,11 +457,18 @@ def detect_model():
     return None
 
 
+def detect_product_name():
+    return read_text("/sys/class/dmi/id/product_name")
+
+
 def detect():
     devices = hyprctl("devices") or {}
     kernel = kernel_input_devices()
     model = detect_model()
-    unreported = bool(model) and model.startswith(UNREPORTED_FOLD)
+    # product_version can hold a placeholder such as "Type1ProductConfigId" on
+    # HP, hiding the real name in product_name; check both.
+    names = (model, detect_product_name())
+    unreported = any(n and n.startswith(UNREPORTED_FOLD) for n in names)
     return {
         "model": model,
         "panel": panel_name(detect_panel()),
