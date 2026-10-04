@@ -152,9 +152,10 @@ class ConfTest(CliTestCase):
 
 
 class FoldTest(CliTestCase):
-    def detect_as(self, model):
+    def detect_as(self, model, product_name=None):
         cli = self.cli
         with mock.patch.object(cli, "detect_model", return_value=model), \
+                mock.patch.object(cli, "detect_product_name", return_value=product_name), \
                 mock.patch.object(cli, "hyprctl", return_value={}), \
                 mock.patch.object(cli, "kernel_input_devices", return_value=[]), \
                 mock.patch.object(cli, "detect_panel", return_value=None), \
@@ -167,6 +168,12 @@ class FoldTest(CliTestCase):
         self.assertEqual(conf["tablet_switch"], [])
         self.assertIsNone(conf["tablet_sysfs"])
         self.assertFalse(self.cli.has_fold_sensor(conf))
+
+    def test_a_placeholder_product_version_does_not_hide_the_model(self):
+        conf = self.detect_as("Type1ProductConfigId",
+                              "HP Envy x360 2-in-1 Laptop 16-ad0xxx")
+        self.assertEqual(conf["tablet_switch"], [])
+        self.assertIsNone(conf["tablet_sysfs"])
 
     def test_other_models_keep_their_fold_sensor(self):
         conf = self.detect_as("HP ENVY x360 Convertible 15-ee0xxx")
