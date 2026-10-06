@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 PLUGIN_ID = "andreiyurik.tablet-mode"
 CLI = os.path.abspath(__file__)
@@ -41,6 +42,26 @@ STATE_DIR = os.path.join(
 )
 DEVICES_CONF = os.path.join(STATE_DIR, "devices.conf")
 LOCK_FILE = os.path.join(STATE_DIR, "locked")
+# Held by the running daemon. Two shells can overlap across a restart, and two
+# daemons would each turn the panel and rebind the switches.
+DAEMON_LOCK = os.path.join(STATE_DIR, "daemon.lock")
+
+# Omarchy's monitor watcher holds this while it reloads to bring a monitor
+# with no mode back. Turning the panel in the middle of that is a modeset
+# racing its modeset.
+OMARCHY_MODELESS_LOCK = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "omarchy-monitor-modeless.lock")
+
+# How long the monitors must stay quiet after a hotplug or a config reload
+# before the panel is turned. A cable going in fires several events while the
+# driver and Omarchy are still bringing the display up.
+SETTLE_SECONDS = 2.5
+
+# How long the fold sensor must keep saying "folded" before the built-in
+# keyboard is switched off. A ThinkPad reports a fold for about a second on
+# opening the lid and on resume, and keys typed meanwhile -- a password at the
+# lock screen -- would be lost.
+FOLD_CONFIRM_SECONDS = 2.0
 FOLD_FILE = os.path.join(STATE_DIR, "folded")
 
 SHELL_JSON = os.path.join(CONFIG_HOME, "omarchy/shell.json")
@@ -141,6 +162,63 @@ def desired_transform(mapping, is_locked, is_folded, orientation, recorded):
     if is_folded is False:
         return 0
     return mapping.get(orientation, recorded)
+
+
+def modeless(monitors):
+    """Enabled monitors the compositor has brought up without a mode.
+
+    The 0x0 a monitor gets when it answers a hotplug with a partial EDID is a
+    black screen. Omarchy's watcher reloads until it recovers.
+    """
+    return [m.get("name") or "?" for m in monitors or []
+            if not m.get("disabled") and not (m.get("width") and m.get("height"))]
+
+
+def rotation_blocker(monitors, recovering):
+    """Why the panel must not be turned now, or None when it may.
+
+    A modeset of our own while a display is still coming up is what turns a
+    flaky hotplug into a black screen that stays black.
+    """
+    if recovering:
+        return "Omarchy is recovering a monitor"
+    names = modeless(monitors)
+    if names:
+        return "%s has no mode yet" % ", ".join(names)
+    return None
+
+
+def debounce_fold(reading, confirmed, since, now, hold=FOLD_CONFIRM_SECONDS):
+    """The fold to act on, and since when an unconfirmed fold has been read.
+
+    Opening counts at once: giving the keyboard back is always safe. A fold
+    counts once the sensor has said so for `hold` seconds without a break.
+    Returns (confirmed, since); `since` is None unless a fold is pending.
+    """
+    if reading is not True:
+        return reading, None
+    if confirmed is True:
+        return True, None
+    since = now if since is None else since
+    if now - since >= hold:
+        return True, None
+    return confirmed, since
+
+
+def omarchy_recovering():
+    """Whether Omarchy's monitor watcher is reloading to recover a monitor."""
+    import fcntl
+    try:
+        handle = open(OMARCHY_MODELESS_LOCK, "a")
+    except OSError:
+        return False
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        handle.close()  # closing drops a lock taken here
+    return False
 
 
 def log(message):
@@ -689,6 +767,12 @@ def apply_rotation(transform):
     if panel_off(panel):
         log("internal panel is off; not turning it")
         return 0
+    # Nor while a display is still coming up: the rule below would carry a 0x0
+    # mode over and black the panel out too, and the modeset races Omarchy's.
+    blocker = rotation_blocker(hyprctl("monitors", "all"), omarchy_recovering())
+    if blocker:
+        log("not turning the panel: %s" % blocker)
+        return 1
 
     # Mode, position and scale are carried over from the running monitor: a
     # per-output rule replaces the wildcard one outright, and "preferred" and
@@ -751,6 +835,58 @@ def status(conf=None):
 # ------------------------------------------------------------------- daemon
 
 
+def is_daemon(pid):
+    """Whether `pid` is a daemon of this plugin, not a process that reused it."""
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as handle:
+            args = handle.read().split(b"\0")
+    except OSError:
+        return False
+    return (any(arg.endswith(b"omarchy-tablet-mode") for arg in args)
+            and b"daemon" in args)
+
+
+def take_daemon_lock(timeout=5.0):
+    """Become the only daemon: the newest one wins.
+
+    Across a shell restart the old shell can still be running when the new one
+    starts its daemon, and two daemons each turn the panel and rebind the
+    switches. The older one is asked to stop, and does so the way it would at
+    any shell restart. Returns the open lock file, which must stay open.
+    """
+    import fcntl
+    import signal
+
+    os.makedirs(STATE_DIR, exist_ok=True)
+    handle = open(DAEMON_LOCK, "a+")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.seek(0)
+        holder = handle.read().strip()
+        if holder.isdigit() and int(holder) != os.getpid() and is_daemon(int(holder)):
+            log("taking over from the daemon at pid %s" % holder)
+            try:
+                os.kill(int(holder), signal.SIGTERM)
+            except OSError:
+                pass
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    log("another daemon holds %s; running anyway" % DAEMON_LOCK)
+                    return handle
+                time.sleep(0.2)
+    handle.seek(0)
+    handle.truncate()
+    handle.write("%d\n" % os.getpid())
+    handle.flush()
+    return handle
+
+
 def run_daemon(mapping_override=None):
     """Follow the accelerometer, the fold and the lock; print state as JSON lines.
 
@@ -773,14 +909,21 @@ def run_daemon(mapping_override=None):
 
     bus_name = "net.hadess.SensorProxy"
 
+    daemon_lock = take_daemon_lock()  # noqa: F841 -- held for the daemon's lifetime
+
     conf, _ = refresh_conf()
     if not has_fold_sensor(conf):
         log("no fold sensor found; following the accelerometer in every position")
 
     # "wired" is whether the switch binds are in place. A freshly loaded
-    # config has none.
-    state = {"proxy": None, "candidate": None, "folded": "unknown", "pending": False,
-             "mapping": None, "wired": False}
+    # config has none. "fold" is the confirmed fold, "fold_since" when an
+    # unconfirmed one was first read. "input_off" is what the built-in input
+    # was last set to, None after a reload has put it back. The timers are
+    # pending GLib sources, one per reason.
+    state = {"proxy": None, "candidate": None, "pending": False, "mapping": None,
+             "wired": False, "fold": None, "fold_since": None, "input_off": None,
+             "blocked": None, "settle_timer": None, "fold_timer": None,
+             "retry_timer": None}
     loop = GLib.MainLoop()
 
     def emit():
@@ -788,22 +931,58 @@ def run_daemon(mapping_override=None):
         data["sensor"] = state["proxy"] is not None
         print(json.dumps(data), flush=True)
 
+    def later(seconds, key):
+        """Run another pass in `seconds`, unless one is already due for `key`."""
+        if state[key] is not None:
+            return
+
+        def fire():
+            state[key] = None
+            schedule()
+            return GLib.SOURCE_REMOVE
+
+        state[key] = GLib.timeout_add(int(seconds * 1000), fire)
+
+    def settle():
+        """Hold rotation until the monitors have been quiet for SETTLE_SECONDS."""
+        if state["settle_timer"] is not None:
+            GLib.source_remove(state["settle_timer"])
+            state["settle_timer"] = None
+        later(SETTLE_SECONDS, "settle_timer")
+
     def sync():
         state["pending"] = False
-        is_folded = folded(conf)
         if not state["wired"]:
             # On a fresh start and after every config reload there are no
-            # switch binds. The input state goes out again along with them.
+            # switch binds, and the built-in input is back as the files have it.
             state["wired"] = hypr_eval(bind_statements(conf))
-            state["folded"] = "unknown"
-        if is_folded != state["folded"]:
-            if opened(state["folded"], is_folded):
+            state["input_off"] = None
+
+        before = state["fold"]
+        state["fold"], state["fold_since"] = debounce_fold(
+            folded(conf), before, state["fold_since"], time.monotonic())
+        if state["fold_since"] is not None:
+            later(FOLD_CONFIRM_SECONDS, "fold_timer")
+        is_folded = state["fold"]
+        if is_folded != before:
+            if opened(before, is_folded):
                 on_opened()
             if is_folded is not None:
-                apply_input(is_folded, conf)
                 log("folded: following the sensor, built-in input off" if is_folded
                     else "unfolded: built-in input on")
-            state["folded"] = is_folded
+
+        # A black screen with the keyboard off leaves nothing to recover with
+        # but the power button, so the built-in input stays on while any
+        # display has no mode.
+        monitors = hyprctl("monitors", "all") or []
+        black = modeless(monitors)
+        if is_folded is not None:
+            want_off = is_folded is True and not black
+            if want_off != state["input_off"]:
+                if is_folded and black:
+                    log("%s has no mode; keeping the built-in input on" % ", ".join(black))
+                if apply_input(want_off, conf):
+                    state["input_off"] = want_off
 
         settings = plugin_entry() or {}
         mapping_name = resolve_mapping(mapping_override or settings.get("mapping"))
@@ -821,8 +1000,19 @@ def run_daemon(mapping_override=None):
 
         panel = detect_panel()
         # A panel that is off stays off: no sensor reading is worth waking it.
-        if target is not None and panel and not panel_off(panel):
-            if target != int(panel.get("transform", 0)):
+        # While the monitors settle, the settle timer runs the next pass; while
+        # a display is still without a mode, a retry does.
+        if (target is not None and panel and not panel_off(panel)
+                and target != int(panel.get("transform", 0))
+                and state["settle_timer"] is None):
+            blocker = rotation_blocker(monitors, omarchy_recovering())
+            if blocker:
+                if blocker != state["blocked"]:
+                    log("waiting to turn the panel: %s" % blocker)
+                state["blocked"] = blocker
+                later(3, "retry_timer")
+            else:
+                state["blocked"] = None
                 apply_rotation(target)
         emit()
         return GLib.SOURCE_REMOVE
@@ -917,7 +1107,11 @@ def run_daemon(mapping_override=None):
             event = line.split(">>", 1)[0]
             if event == "configreloaded":
                 state["wired"] = False
-            if event in ("configreloaded", "monitoradded", "monitoraddedv2"):
+            if event in ("configreloaded", "monitoradded", "monitoraddedv2",
+                         "monitorremoved", "monitorremovedv2"):
+                # Binds and input go back at once; turning the panel waits
+                # until the displays have stopped changing.
+                settle()
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
 
@@ -950,7 +1144,9 @@ def run_daemon(mapping_override=None):
     # one small read; anything more expensive only happens on a change.
     if conf.get("tablet_sysfs"):
         def poll():
-            if folded(conf) != state["folded"]:
+            # A pending fold differs from the confirmed one too, so this also
+            # keeps checking that it holds.
+            if folded(conf) != state["fold"]:
                 schedule()
             return GLib.SOURCE_CONTINUE
 
@@ -967,6 +1163,8 @@ def run_daemon(mapping_override=None):
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal_add(GLib.PRIORITY_DEFAULT, signum, loop.quit)
 
+    # At login the displays are still coming up too.
+    settle()
     schedule()
     try:
         loop.run()
@@ -1020,11 +1218,34 @@ def cmd_fold(action):
                                   action == "on"))
     os.replace(tmp, FOLD_FILE)
     # Input is switched here rather than by the daemon, so the keyboard follows
-    # the lid even while the shell is not running. By the event itself, not
-    # folded(): sysfs may not have caught up with the switch yet. The daemon's
-    # poll of sysfs puts right anything the event got wrong.
-    apply_input(action == "on")
+    # the lid even while the shell is not running. Opening gives it back at
+    # once. A fold only counts once it has held: a ThinkPad reports one for
+    # about a second on opening the lid and on resume, and keys typed meanwhile
+    # -- a password at the lock screen -- would be lost. Waiting also gives
+    # sysfs time to catch up with the switch.
+    if action == "off":
+        apply_input(False)
+        return 0
+    time.sleep(FOLD_CONFIRM_SECONDS)
+    if fold_still_held():
+        apply_input(True)
     return 0
+
+
+def fold_still_held():
+    """Whether a fold reported a moment ago still stands, with every display lit.
+
+    No later "off" event may have replaced it, a sysfs state, where there is
+    one, must agree, and the keyboard stays on while any display is black.
+    """
+    if fold_event() is not True:
+        return False
+    sysfs = read_conf().get("tablet_sysfs")
+    if sysfs:
+        value = read_text(sysfs)
+        if value is not None and value != "1":
+            return False
+    return not modeless(hyprctl("monitors", "all"))
 
 
 def main():

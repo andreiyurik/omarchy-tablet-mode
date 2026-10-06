@@ -201,15 +201,70 @@ class FoldTest(CliTestCase):
         self.assertIs(self.cli.folded({"tablet_switch": []}), True)
         self.assertTrue(self.cli.has_fold_sensor({"tablet_switch": []}))
 
-    def test_the_switch_event_decides_the_keyboard_before_sysfs_catches_up(self):
+    def fold_with(self, action, sysfs_after, monitors=(), later_event=None):
+        """Run `fold`, with sysfs (and maybe a later switch event) as they
+        stand once the confirmation wait is over."""
         sysfs = os.path.join(self.home, "tablet_mode")
         self.write(sysfs, "0\n")
         self.write(self.cli.SHELL_JSON, '{"bar": {"layout": {"right": [{"id": "%s"}]}}}'
                    % self.cli.PLUGIN_ID)
         self.cli.write_conf({"tablet_sysfs": sysfs, "internal": ["kbd"]})
-        with mock.patch.object(self.cli, "apply_input") as apply_input:
-            self.cli.cmd_fold("on")
+
+        def wait(_seconds):
+            self.write(sysfs, sysfs_after)
+            if later_event is not None:
+                self.write(self.cli.FOLD_FILE, "sig-now %d\n" % later_event)
+
+        with mock.patch.object(self.cli, "apply_input") as apply_input, \
+                mock.patch.object(self.cli.time, "sleep", side_effect=wait) as sleep, \
+                mock.patch.object(self.cli, "hyprctl", return_value=list(monitors)):
+            self.cli.cmd_fold(action)
+        return apply_input, sleep
+
+    def test_a_fold_that_holds_switches_the_keyboard_off_once_sysfs_catches_up(self):
+        apply_input, sleep = self.fold_with("on", "1\n")
+        sleep.assert_called_once_with(self.cli.FOLD_CONFIRM_SECONDS)
         apply_input.assert_called_once_with(True)
+
+    def test_a_momentary_fold_on_opening_the_lid_leaves_the_keyboard_on(self):
+        apply_input, _ = self.fold_with("on", "0\n")
+        self.assertFalse(apply_input.called)
+
+    def test_a_fold_undone_by_a_later_event_leaves_the_keyboard_on(self):
+        apply_input, _ = self.fold_with("on", "1\n", later_event=0)
+        self.assertFalse(apply_input.called)
+
+    def test_a_fold_while_a_display_is_black_leaves_the_keyboard_on(self):
+        black = {"name": "HDMI-A-1", "width": 0, "height": 0, "disabled": False}
+        apply_input, _ = self.fold_with("on", "1\n", monitors=[black])
+        self.assertFalse(apply_input.called)
+
+    def test_opening_gives_the_keyboard_back_at_once(self):
+        apply_input, sleep = self.fold_with("off", "0\n")
+        self.assertFalse(sleep.called)
+        apply_input.assert_called_once_with(False)
+
+
+class DebounceFoldTest(CliTestCase):
+    def test_a_fold_counts_only_once_it_has_held(self):
+        debounce = self.cli.debounce_fold
+        self.assertEqual(debounce(True, False, None, 10.0, hold=2), (False, 10.0))
+        self.assertEqual(debounce(True, False, 10.0, 11.0, hold=2), (False, 10.0))
+        self.assertEqual(debounce(True, False, 10.0, 12.0, hold=2), (True, None))
+
+    def test_a_break_in_the_fold_starts_the_wait_over(self):
+        debounce = self.cli.debounce_fold
+        self.assertEqual(debounce(False, False, 10.0, 11.0, hold=2), (False, None))
+        self.assertEqual(debounce(True, False, None, 11.5, hold=2), (False, 11.5))
+
+    def test_opening_counts_at_once(self):
+        self.assertEqual(self.cli.debounce_fold(False, True, None, 0.0), (False, None))
+
+    def test_a_confirmed_fold_stays_confirmed(self):
+        self.assertEqual(self.cli.debounce_fold(True, True, None, 0.0), (True, None))
+
+    def test_an_unknown_fold_stays_unknown(self):
+        self.assertEqual(self.cli.debounce_fold(None, None, None, 0.0), (None, None))
 
 
 class DetectionTest(CliTestCase):
@@ -276,13 +331,44 @@ class PanelTest(CliTestCase):
         with self.monitors(self.hdmi, dict(self.edp, disabled=True)):
             self.assertEqual(self.cli.detect_panel()["name"], "eDP-1")
 
-    def rotate_with(self, panel):
-        with self.monitors(self.hdmi, panel), mock.patch.object(self.cli, "log"), \
+    def rotate_with(self, panel, hdmi=None, recovering=False, expect=0):
+        with self.monitors(hdmi or self.hdmi, panel), mock.patch.object(self.cli, "log"), \
+                mock.patch.object(self.cli, "omarchy_recovering", return_value=recovering), \
                 mock.patch.object(self.cli, "refresh_conf",
-                                  side_effect=lambda updates=None: (dict(updates or {}), False)), \
+                                  side_effect=lambda updates=None: (dict(updates or {}), False)) \
+                as refresh_conf, \
                 mock.patch.object(self.cli, "hypr_eval", return_value=True) as hypr_eval:
-            self.assertEqual(self.cli.apply_rotation(1), 0)
+            self.assertEqual(self.cli.apply_rotation(1), expect)
+        self.refresh_conf = refresh_conf
         return hypr_eval
+
+    def test_the_panel_is_not_turned_while_an_external_display_has_no_mode(self):
+        hypr_eval = self.rotate_with(self.edp, hdmi=dict(self.hdmi, width=0, height=0),
+                                     expect=1)
+        self.assertFalse(hypr_eval.called)
+
+    def test_a_panel_without_a_mode_is_neither_turned_nor_recorded(self):
+        hypr_eval = self.rotate_with(dict(self.edp, width=0, height=0), expect=1)
+        self.assertFalse(hypr_eval.called)
+        self.assertFalse(self.refresh_conf.called)
+
+    def test_the_panel_is_not_turned_while_omarchy_recovers_a_monitor(self):
+        self.assertFalse(self.rotate_with(self.edp, recovering=True, expect=1).called)
+
+    def test_a_disabled_display_without_a_mode_does_not_block(self):
+        off = dict(self.hdmi, width=0, height=0, disabled=True)
+        self.assertIsNone(self.cli.rotation_blocker([self.edp, off], False))
+
+    def test_omarchys_recovery_lock_is_seen_while_held(self):
+        import fcntl
+        path = os.path.join(self.home, "modeless.lock")
+        with mock.patch.object(self.cli, "OMARCHY_MODELESS_LOCK", path):
+            self.assertFalse(self.cli.omarchy_recovering())
+            with open(path, "a") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                # flock locks are per open file, so a second open contends.
+                self.assertTrue(self.cli.omarchy_recovering())
+            self.assertFalse(self.cli.omarchy_recovering())
 
     def test_a_panel_the_compositor_has_off_is_not_turned(self):
         self.assertFalse(self.rotate_with(dict(self.edp, disabled=True)).called)
@@ -479,6 +565,37 @@ class SensorProxyTest(CliTestCase):
             self.assertIs(self.cli.status({})["sensorInstalled"], False)
             self.write(policy, "<busconfig/>\n")
             self.assertIs(self.cli.status({})["sensorInstalled"], True)
+
+
+class DaemonLockTest(CliTestCase):
+    def test_the_daemon_takes_the_lock_and_records_its_pid(self):
+        handle = self.cli.take_daemon_lock()
+        self.addCleanup(handle.close)
+        self.assertEqual(self.read(self.cli.DAEMON_LOCK).strip(), str(os.getpid()))
+
+    def test_a_stale_pid_left_in_the_file_does_not_block(self):
+        self.write(self.cli.DAEMON_LOCK, "999999999\n")
+        handle = self.cli.take_daemon_lock()
+        self.addCleanup(handle.close)
+        self.assertEqual(self.read(self.cli.DAEMON_LOCK).strip(), str(os.getpid()))
+
+    def test_only_a_daemon_of_this_plugin_is_ever_stopped(self):
+        import fcntl
+        os.makedirs(self.cli.STATE_DIR, exist_ok=True)
+        held = open(self.cli.DAEMON_LOCK, "a+")
+        self.addCleanup(held.close)
+        fcntl.flock(held, fcntl.LOCK_EX)
+        held.write("1\n")  # init: not ours, never to be signalled
+        held.flush()
+        with mock.patch.object(self.cli.os, "kill") as kill, \
+                mock.patch.object(self.cli, "log"):
+            handle = self.cli.take_daemon_lock(timeout=0.3)
+        self.addCleanup(handle.close)
+        self.assertFalse(kill.called)
+
+    def test_a_daemon_is_recognised_by_its_command_line(self):
+        self.assertFalse(self.cli.is_daemon(os.getpid()))
+        self.assertFalse(self.cli.is_daemon(999999999))
 
 
 if __name__ == "__main__":
