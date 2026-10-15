@@ -388,6 +388,82 @@ class PanelTest(CliTestCase):
     def test_an_enabled_panel_is_turned(self):
         self.assertTrue(self.rotate_with(self.edp).called)
 
+    def test_a_turned_panel_is_kept_for_config_reloads(self):
+        self.rotate_with(self.edp)
+        lua = self.read(self.cli.ROTATION_FILE)
+        self.assertIn('hl.monitor({ output = "eDP-1", mode = "1920x1200@60.0", '
+                      'position = "0x0", scale = 1.25, transform = 1 })', lua)
+
+    def test_while_a_display_is_black_the_turn_is_kept_for_the_next_reload(self):
+        # Omarchy reloads over and over to recover the display; each of those
+        # reloads must bring the panel up turned, without a modeset of ours.
+        hypr_eval = self.rotate_with(self.edp, hdmi=dict(self.hdmi, width=0, height=0),
+                                     expect=1)
+        self.assertFalse(hypr_eval.called)
+        self.assertIn("transform = 1", self.read(self.cli.ROTATION_FILE))
+
+    def test_while_omarchy_recovers_the_turn_is_kept_for_the_next_reload(self):
+        self.assertFalse(self.rotate_with(self.edp, recovering=True, expect=1).called)
+        self.assertTrue(os.path.exists(self.cli.ROTATION_FILE))
+
+    def test_a_panel_without_a_mode_leaves_no_rotation_file(self):
+        self.rotate_with(dict(self.edp, width=0, height=0), expect=1)
+        self.assertFalse(os.path.exists(self.cli.ROTATION_FILE))
+
+    def test_standing_upright_removes_the_rotation_file(self):
+        self.rotate_with(self.edp)
+        with self.monitors(self.hdmi, dict(self.edp, transform=1)), \
+                mock.patch.object(self.cli, "log"), \
+                mock.patch.object(self.cli, "omarchy_recovering", return_value=False), \
+                mock.patch.object(self.cli, "refresh_conf",
+                                  side_effect=lambda updates=None: (dict(updates or {}), False)), \
+                mock.patch.object(self.cli, "hypr_eval", return_value=True) as hypr_eval:
+            self.assertEqual(self.cli.apply_rotation(0), 0)
+        self.assertTrue(hypr_eval.called)
+        self.assertFalse(os.path.exists(self.cli.ROTATION_FILE))
+
+    def test_disabling_removes_the_rotation_file_even_with_the_panel_off(self):
+        self.rotate_with(self.edp)
+        with self.monitors(self.hdmi, dict(self.edp, disabled=True)), \
+                mock.patch.object(self.cli, "log"), \
+                mock.patch.object(self.cli, "apply_input"):
+            self.cli.restore()
+        self.assertFalse(os.path.exists(self.cli.ROTATION_FILE))
+
+    def run_rotation_file(self):
+        """Run the rotation file with a stub `hl`, and return what it called."""
+        import shutil
+        lua = shutil.which("lua") or shutil.which("luajit")
+        if not lua:
+            self.skipTest("no Lua interpreter")
+        import subprocess
+        script = ('calls = {} hl = { monitor = function(r) calls[#calls + 1] = "monitor" end, '
+                  'device = function(r) calls[#calls + 1] = "device" end } '
+                  'dofile(%s) print(table.concat(calls, ","))'
+                  % self.cli.lua_string(self.cli.ROTATION_FILE))
+        return subprocess.run([lua, "-e", script], capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+    def test_the_rotation_file_turns_the_panel_and_its_touchscreen(self):
+        self.cli.write_rotation_file(self.cli.rotation_statements(
+            "eDP-1", {"mode": "1920x1200@60", "position": "0x0", "scale": 1.25,
+                      "touch": ["wacom-finger"]}, 2))
+        self.assertEqual(self.run_rotation_file(), "monitor,device")
+
+    def test_the_rotation_file_yields_to_omarchy_holding_the_panel_off(self):
+        # Omarchy's clamshell toggle sorts, and so loads, before this file.
+        self.cli.write_rotation_file(self.cli.rotation_statements(
+            "eDP-1", {"mode": "1920x1200@60", "position": "0x0", "scale": 1}, 2))
+        self.write(os.path.join(self.cli.OMARCHY_TOGGLES, "internal-monitor-clamshell.lua"),
+                   'hl.monitor({ output = "eDP-1", disabled = true })\n')
+        self.assertEqual(self.run_rotation_file(), "")
+
+    def test_the_rotation_file_does_nothing_once_the_plugin_is_gone(self):
+        with mock.patch.object(self.cli, "CLI", os.path.join(self.home, "gone", "cli")):
+            self.cli.write_rotation_file(self.cli.rotation_statements(
+                "eDP-1", {"mode": "1920x1200@60", "position": "0x0", "scale": 1}, 2))
+        self.assertEqual(self.run_rotation_file(), "")
+
 
 class InputTest(CliTestCase):
     def test_unfolding_leaves_omarchys_disabled_touchpad_alone(self):

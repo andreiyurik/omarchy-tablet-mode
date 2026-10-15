@@ -11,6 +11,8 @@ only way to establish it is to turn the machine and look.
 Nothing is written into ~/.config/hypr. The daemon applies everything to the
 running compositor with `hyprctl eval`, and applies it again after every
 config reload, since a reload rebuilds monitor rules and binds from the files.
+The one exception is a turned panel: its rules also go into Omarchy's toggles,
+which every reload loads, so a reload never straightens it.
 
 Subcommands:
   daemon    follow the accelerometer and the fold (the plugin's Service runs this)
@@ -100,6 +102,14 @@ OMARCHY_DISABLED_INPUT = [
     for kind in ("touchpad", "touchscreen")
 ]
 PANEL_OFF_TOGGLES = ("internal-monitor-clamshell", "internal-monitor-disable")
+
+# The turned panel's rules, kept where Omarchy loads its toggles on every
+# config reload, after the user's files. A reload then brings the panel up
+# turned in the same modeset as everything else, instead of straightening it
+# and leaving the daemon to turn it back -- which it must not do while Omarchy
+# reloads over and over to recover a black monitor. Present only while the
+# panel is turned.
+ROTATION_FILE = os.path.join(OMARCHY_TOGGLES, "tablet-mode-rotation.lua")
 
 # Fold sensors that report their current state in sysfs. The switch events
 # Hyprland delivers cover every machine with SW_TABLET_MODE, but an event only
@@ -759,42 +769,13 @@ def bind_statements(conf):
 # ----------------------------------------------------------------- rotation
 
 
-def apply_rotation(transform):
-    """Turn the panel now through `hyprctl eval`, and record it for reloads.
+def rotation_statements(name, conf, transform):
+    """The Lua that turns the panel and its digitizers to `transform`.
 
-    The live change needs no reload, so layer surfaces are left alone. The
-    record is what the daemon turns the panel back to after a config reload,
-    since that rebuilds the monitor rules from the files.
+    Mode, position and scale are carried over from the running monitor: a
+    per-output rule replaces the wildcard one outright, and "preferred" and
+    "auto" would drop a custom refresh rate or a multi-monitor layout.
     """
-    panel = detect_panel()
-    name = panel_name(panel)
-    if not name:
-        log("no internal panel found")
-        return 1
-    if panel_off(panel):
-        log("internal panel is off; not turning it")
-        return 0
-    # Nor while a display is still coming up: the rule below would carry a 0x0
-    # mode over and black the panel out too, and the modeset races Omarchy's.
-    blocker = rotation_blocker(hyprctl("monitors", "all"), omarchy_recovering())
-    if blocker:
-        log("not turning the panel: %s" % blocker)
-        return 1
-
-    # Mode, position and scale are carried over from the running monitor: a
-    # per-output rule replaces the wildcard one outright, and "preferred" and
-    # "auto" would drop a custom refresh rate or a multi-monitor layout.
-    conf, _ = refresh_conf({
-        "panel": name,
-        "mode": "%dx%d@%s" % (panel["width"], panel["height"], panel["refreshRate"]),
-        "position": "%dx%d" % (panel["x"], panel["y"]),
-        "scale": panel["scale"],
-        "transform": transform,
-    })
-
-    if int(panel.get("transform", 0)) == transform:
-        return 0
-
     statements = [
         "hl.monitor({ output = %s, mode = %s, position = %s, scale = %s, transform = %d })"
         % (lua_string(name), lua_string(conf["mode"]), lua_string(conf["position"]),
@@ -807,6 +788,94 @@ def apply_rotation(transform):
         % (lua_string(touch), lua_string(name), transform)
         for touch in conf.get("touch", [])
     ]
+    return statements
+
+
+def write_rotation_file(statements):
+    """Keep the turned panel's rules for config reloads, or drop them.
+
+    Omarchy loads its toggles in name order, so a clamshell or disable toggle
+    for the panel loads before this file. The file checks for them itself, or
+    its rule would switch a panel Omarchy turned off straight back on. It also
+    does nothing once the plugin is gone, so a removal that skipped the
+    daemon's cleanup cannot leave the screen turned for good.
+    """
+    if not statements:
+        try:
+            os.remove(ROTATION_FILE)
+        except FileNotFoundError:
+            pass
+        return
+    if not (printable(OMARCHY_TOGGLES) and printable(CLI)):
+        return
+    lines = [
+        "-- Written by omarchy-tablet-mode while the panel is turned; removed when it",
+        "-- stands upright again. Edited by hand, it will be overwritten.",
+        "local function tablet_mode_rotation_applies()",
+        "  for _, toggle in ipairs({ %s }) do"
+        % ", ".join(lua_string(toggle) for toggle in PANEL_OFF_TOGGLES),
+        "    local held = io.open(%s .. \"/\" .. toggle .. \".lua\")" % lua_string(OMARCHY_TOGGLES),
+        "    if held then held:close(); return false end",
+        "  end",
+        "  local cli = io.open(%s)" % lua_string(CLI),
+        "  if not cli then return false end",
+        "  cli:close()",
+        "  return true",
+        "end",
+        "if tablet_mode_rotation_applies() then",
+    ]
+    lines += ["  " + statement for statement in statements]
+    lines.append("end")
+    text = "\n".join(lines) + "\n"
+    if read_text(ROTATION_FILE) == text.strip():
+        return
+    os.makedirs(OMARCHY_TOGGLES, exist_ok=True)
+    tmp = ROTATION_FILE + ".tmp"
+    with open(tmp, "w") as handle:
+        handle.write(text)
+    os.replace(tmp, ROTATION_FILE)
+
+
+def apply_rotation(transform):
+    """Turn the panel, and keep it turned across config reloads.
+
+    The rules go into a file Omarchy loads on every reload, so a reload brings
+    the panel up turned rather than straightening it. The live change, through
+    `hyprctl eval`, needs no reload, so layer surfaces are left alone.
+    """
+    panel = detect_panel()
+    name = panel_name(panel)
+    if not name:
+        log("no internal panel found")
+        return 1
+    if panel_off(panel):
+        log("internal panel is off; not turning it")
+        return 0
+    # A panel still without a mode would have its 0x0 carried into the rule,
+    # live and on every reload after: nothing is turned or recorded.
+    if not (panel.get("width") and panel.get("height")):
+        log("not turning the panel: it has no mode yet")
+        return 1
+
+    conf, _ = refresh_conf({
+        "panel": name,
+        "mode": "%dx%d@%s" % (panel["width"], panel["height"], panel["refreshRate"]),
+        "position": "%dx%d" % (panel["x"], panel["y"]),
+        "scale": panel["scale"],
+        "transform": transform,
+    })
+    statements = rotation_statements(name, conf, transform)
+    write_rotation_file(statements if transform else None)
+
+    if int(panel.get("transform", 0)) == transform:
+        return 0
+    # While another display is still coming up, or Omarchy reloads to recover
+    # one, a modeset of our own races theirs. The file is in place, so the
+    # next reload turns the panel without one.
+    blocker = rotation_blocker(hyprctl("monitors", "all"), omarchy_recovering())
+    if blocker:
+        log("not turning the panel now (%s); the next config reload will" % blocker)
+        return 1
     if not hypr_eval(statements):
         return 1
     return 0
@@ -929,7 +998,7 @@ def run_daemon(mapping_override=None):
     # pending GLib sources, one per reason.
     state = {"proxy": None, "candidate": None, "pending": False, "mapping": None,
              "wired": False, "fold": None, "fold_since": None, "input_off": None,
-             "blocked": None, "settle_timer": None, "fold_timer": None,
+             "blocked": None, "black": [], "settle_timer": None, "fold_timer": None,
              "retry_timer": None}
     loop = GLib.MainLoop()
 
@@ -986,10 +1055,14 @@ def run_daemon(mapping_override=None):
         if is_folded is not None:
             want_off = is_folded is True and not black
             if want_off != state["input_off"]:
-                if is_folded and black:
+                # Said once per black display, not after every one of the
+                # reloads Omarchy makes while it tries to bring it back.
+                if is_folded and black and black != state["black"]:
                     log("%s has no mode; keeping the built-in input on" % ", ".join(black))
                 if apply_input(want_off, conf):
                     state["input_off"] = want_off
+
+        state["black"] = black
 
         settings = plugin_entry() or {}
         mapping_name = resolve_mapping(mapping_override or settings.get("mapping"))
@@ -1009,18 +1082,25 @@ def run_daemon(mapping_override=None):
         # A panel that is off stays off: no sensor reading is worth waking it.
         # While the monitors settle, the settle timer runs the next pass; while
         # a display is still without a mode, a retry does.
-        if (target is not None and panel and not panel_off(panel)
-                and target != int(panel.get("transform", 0))
-                and state["settle_timer"] is None):
+        ready = (target is not None and panel and not panel_off(panel)
+                 and state["settle_timer"] is None)
+        if ready and target != int(panel.get("transform", 0)):
             blocker = rotation_blocker(monitors, omarchy_recovering())
             if blocker:
-                if blocker != state["blocked"]:
-                    log("waiting to turn the panel: %s" % blocker)
-                state["blocked"] = blocker
+                # Not live, but recorded: the reloads Omarchy makes to recover
+                # a display then bring the panel up turned. Once per change.
+                if (blocker, target) != state["blocked"]:
+                    apply_rotation(target)
+                state["blocked"] = (blocker, target)
                 later(3, "retry_timer")
             else:
                 state["blocked"] = None
                 apply_rotation(target)
+        elif ready and (target != 0) != os.path.exists(ROTATION_FILE):
+            # Turned as it should be, but with no file to survive a reload --
+            # as after an upgrade from a version without one -- or upright
+            # with one left over.
+            apply_rotation(target)
         emit()
         return GLib.SOURCE_REMOVE
 
@@ -1196,11 +1276,13 @@ def restore():
     The panel and touchscreen are turned upright together and the built-in
     keyboard is given back first, in case a reload leaves a device as the
     plugin set it. The reload then takes down the switch binds and the
-    panel's monitor rule, rebuilding both from the files.
+    panel's monitor rule, rebuilding both from the files -- with the rotation
+    file gone, even when the panel could not be turned live.
     """
     set_lock(False)
     apply_rotation(0)
     apply_input(False)
+    write_rotation_file(None)
     hyprctl("reload", parse_json=False)
 
 

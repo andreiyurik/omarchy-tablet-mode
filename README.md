@@ -62,8 +62,9 @@ Two things come from outside the plugin:
 Then fold your laptop.
 
 No root, no install script, no system services, and nothing written to
-`~/.config/hypr`: the plugin changes the running compositor only, and puts its
-changes back after every config reload. Disable it, and your laptop is simply
+`~/.config/hypr`: the plugin changes the running compositor, keeps a turned
+panel in Omarchy's toggles so a config reload does not straighten it, and puts
+the rest back after every reload. Disable it, and your laptop is simply
 a laptop again.
 
 ## What you get
@@ -275,9 +276,12 @@ $cli detect      # what it found on your machine — include this in issues
 position and scale are carried over, but anything else set on that output
 (such as VRR) is not, while the panel is turned.
 
-**A config reload straightens a turned screen for a moment.** Reloading
-rebuilds the monitor rules from your files, and the plugin turns the panel back
-as soon as the reload finishes.
+**A turned panel survives a config reload.** While the panel is turned, its
+rules are kept in Omarchy's toggles
+(`~/.local/state/omarchy/toggles/hypr/tablet-mode-rotation.lua`), which every
+reload loads after your files. The file is removed
+as soon as the panel stands upright, and does nothing while Omarchy holds the
+panel off or once the plugin is gone.
 
 **A machine that locks while folded has to be opened to type the password.**
 The built-in keyboard is off in tablet position, Omarchy's lock screen has no
@@ -300,9 +304,14 @@ directly — the same way Omarchy's own monitor scaling does. The screen turns
 without a config reload, and nothing is written into `~/.config/hypr`.
 
 **A reload is followed, not fought.** A reload rebuilds monitor rules and binds
-from the files: the panel straightens while the touchscreen stays turned, and
-the switch binds are gone. The daemon listens on Hyprland's event socket and,
-the moment a reload finishes, puts all of it back. Because it comes after every file, this also wins over
+from the files, and the switch binds are gone. A turned panel and its
+touchscreen come back turned by themselves, from the rotation file in Omarchy's
+toggles (`~/.local/state/omarchy/toggles/hypr/tablet-mode-rotation.lua`), in the
+same modeset as every other display. That matters most while Omarchy reloads
+again and again to bring back a monitor that woke up black: the daemon keeps
+out of those modesets, and the panel no longer stands upside down until the
+monitor recovers. The daemon listens on Hyprland's event socket and,
+the moment a reload finishes, puts the rest back. Because it comes after every file, this also wins over
 tools whose monitor rules load late, such as hyprmoncfg. The orientation last
 applied on purpose is kept in `~/.local/state/omarchy/tablet-mode/`.
 
