@@ -54,9 +54,9 @@ DAEMON_LOCK = os.path.join(STATE_DIR, "daemon.lock")
 OMARCHY_MODELESS_LOCK = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "omarchy-monitor-modeless.lock")
 
-# How long the monitors must stay quiet after a hotplug or a config reload
-# before the panel is turned. A cable going in fires several events while the
-# driver and Omarchy are still bringing the display up.
+# How long the monitors must stay quiet after a hotplug before the panel is
+# turned. A cable going in fires several events while the driver and Omarchy
+# are still bringing the display up.
 SETTLE_SECONDS = 2.5
 
 # How long the fold sensor must keep saying "folded" before the built-in
@@ -67,6 +67,9 @@ FOLD_CONFIRM_SECONDS = 2.0
 FOLD_FILE = os.path.join(STATE_DIR, "folded")
 
 SHELL_JSON = os.path.join(CONFIG_HOME, "omarchy/shell.json")
+
+# The user's Hyprland config, searched for monitor rules that turn the panel.
+HYPR_CONFIG_DIR = os.path.join(CONFIG_HOME, "hypr")
 
 # The Lua global holding the switch binds this daemon made, so a restarted
 # daemon can take the old ones down before binding again. A config reload
@@ -196,6 +199,21 @@ def rotation_blocker(monitors, recovering):
     if names:
         return "%s has no mode yet" % ", ".join(names)
     return None
+
+
+HOTPLUG_EVENTS = ("monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2")
+
+
+def settles(event, settling):
+    """Whether a Hyprland event makes the panel wait for the monitors to settle.
+
+    A hotplug does. A config reload on its own does not: the displays keep
+    their modes, and a panel a late monitor rule has turned would stand
+    upside down for the whole wait. A display a reload leaves without a mode
+    still blocks the turn, and a reload in the middle of a hotplug -- Omarchy
+    reloads to recover a display that came up black -- starts the wait over.
+    """
+    return event in HOTPLUG_EVENTS or (event == "configreloaded" and settling)
 
 
 def debounce_fold(reading, confirmed, since, now, hold=FOLD_CONFIRM_SECONDS):
@@ -388,6 +406,76 @@ def panel_off(panel):
         os.path.exists(os.path.join(OMARCHY_TOGGLES, "%s.lua" % toggle))
         for toggle in PANEL_OFF_TOGGLES
     )
+
+
+def rule_matches_panel(output, panel):
+    """Whether a monitor rule's output names the panel: by connector, by the
+    start of its description after "desc:", or as the rule for every output."""
+    if output == "":
+        return True
+    if output.startswith("desc:"):
+        wanted = output[len("desc:"):].strip()
+        return bool(wanted) and (panel.get("description") or "").startswith(wanted)
+    return output == panel.get("name")
+
+
+def panel_turns_in(text, panel):
+    """Monitor rules in a Lua config that turn the panel, as (line, transform).
+
+    A rule like this comes back on every config reload, after the rotation
+    file -- monitor tools such as hyprmoncfg load their rules last -- and
+    flips the screen until the daemon turns it back. A layout saved while
+    the panel was turned is the usual way one gets there.
+    """
+    # Comments go, but their lines stay, so line numbers still match the file.
+    text = re.sub(r"--[^\n]*", "", text)
+    found = []
+    for rule in re.finditer(r"hl\.monitor\s*\(\s*\{(.*?)\}\s*\)", text, re.S):
+        output = re.search(r'\boutput\s*=\s*"([^"]*)"', rule.group(1))
+        transform = re.search(r"\btransform\s*=\s*(\d+)", rule.group(1))
+        if output and transform and int(transform.group(1)) != 0 \
+                and rule_matches_panel(output.group(1), panel):
+            at = rule.start(1) + transform.start()  # the line to edit is the transform's
+            found.append((text.count("\n", 0, at) + 1, int(transform.group(1))))
+    return found
+
+
+def panel_turns(panel):
+    """Rules in ~/.config/hypr that turn the panel, as (path, line, transform)."""
+    found = []
+    if not panel:
+        return found
+    for path in sorted(glob.glob(os.path.join(HYPR_CONFIG_DIR, "*.lua"))):
+        try:
+            with open(path) as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        found += [(path, line, transform) for line, transform in panel_turns_in(text, panel)]
+    return found
+
+
+def panel_turns_warning(turns, name):
+    """The notification for rules that turn the panel: headline and body."""
+    where = ", ".join("%s:%d" % (os.path.basename(path), line) for path, line, _ in turns)
+    return (
+        "Tablet Mode: your monitor config turns the screen",
+        "%s sets a rotation (transform) for %s, so every config reload flips "
+        "the screen until Tablet Mode turns it back. Remove the transform "
+        "there: Tablet Mode decides which way the screen turns." % (where, name),
+    )
+
+
+def notify(headline, body):
+    for command in (["omarchy-notification-send", "-u", "normal", headline, body],
+                    ["notify-send", headline, body]):
+        try:
+            subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except OSError:
+            continue
+    return False
 
 
 def detect_touch_devices(devices, kernel):
@@ -995,11 +1083,13 @@ def run_daemon(mapping_override=None):
     # config has none. "fold" is the confirmed fold, "fold_since" when an
     # unconfirmed one was first read. "input_off" is what the built-in input
     # was last set to, None after a reload has put it back. The timers are
-    # pending GLib sources, one per reason.
+    # pending GLib sources, one per reason. "reloaded" asks the next pass to
+    # look for config rules that turn the panel, "turns" is what was last
+    # found, so each finding is told once.
     state = {"proxy": None, "candidate": None, "pending": False, "mapping": None,
              "wired": False, "fold": None, "fold_since": None, "input_off": None,
              "blocked": None, "black": [], "settle_timer": None, "fold_timer": None,
-             "retry_timer": None}
+             "retry_timer": None, "reloaded": True, "turns": []}
     loop = GLib.MainLoop()
 
     def emit():
@@ -1079,6 +1169,15 @@ def run_daemon(mapping_override=None):
         )
 
         panel = detect_panel()
+        if state["reloaded"]:
+            state["reloaded"] = False
+            turns = panel_turns(panel)
+            if turns and turns != state["turns"]:
+                headline, body = panel_turns_warning(turns, panel_name(panel))
+                log(body)
+                notify(headline, body)
+            state["turns"] = turns
+
         # A panel that is off stays off: no sensor reading is worth waking it.
         # While the monitors settle, the settle timer runs the next pass; while
         # a display is still without a mode, a retry does.
@@ -1194,11 +1293,10 @@ def run_daemon(mapping_override=None):
             event = line.split(">>", 1)[0]
             if event == "configreloaded":
                 state["wired"] = False
-            if event in ("configreloaded", "monitoradded", "monitoraddedv2",
-                         "monitorremoved", "monitorremovedv2"):
-                # Binds and input go back at once; turning the panel waits
-                # until the displays have stopped changing.
+                state["reloaded"] = True
+            if settles(event, state["settle_timer"] is not None):
                 settle()
+            if event == "configreloaded" or event in HOTPLUG_EVENTS:
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
 
@@ -1284,6 +1382,14 @@ def restore():
     apply_input(False)
     write_rotation_file(None)
     hyprctl("reload", parse_json=False)
+    # With no daemon left to turn it back, a rule of the user's own that turns
+    # the panel now keeps it turned. Said, at least, where to find it.
+    panel = detect_panel()
+    turns = panel_turns(panel)
+    if turns:
+        headline, body = panel_turns_warning(turns, panel_name(panel))
+        log(body)
+        notify(headline, body)
 
 
 # --------------------------------------------------------------------- main
@@ -1395,7 +1501,12 @@ def main():
         print(json.dumps(status()))
         return 0
     if args.command == "detect":
-        print(json.dumps(detect(), indent=2))
+        data = detect()
+        # Rules that flip the screen on every reload, the first thing to look
+        # for in a report of the screen turning by itself.
+        data["panel_turned_by"] = ["%s:%d transform=%d" % turn
+                                   for turn in panel_turns(detect_panel())]
+        print(json.dumps(data, indent=2))
         return 0
     return 2
 

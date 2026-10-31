@@ -201,6 +201,21 @@ matrix. Please also file a
 [machine report](https://github.com/andreiyurik/omarchy-tablet-mode/issues/new?template=machine-report.yml),
 so the next person with your model knows what to pick.
 
+### If the screen flips for a moment on its own
+
+A monitor rule in your own config that rotates the laptop's panel comes back
+on every config reload, and Omarchy reloads more often than you might think:
+toggling a workspace's layout, changing the theme, flipping a toggle. The
+screen then flips until Tablet Mode turns it back a moment later. The usual
+culprit is a layout saved by a monitor tool such as hyprmoncfg while the panel
+was turned.
+
+Tablet Mode looks for such a rule after every reload and tells you, once, in a
+notification which file and line it is in. `detect` lists it too, under
+`panel_turned_by`. Remove the `transform` there, or set it to `0` and save the
+monitor tool's profile again with the screen upright: Tablet Mode decides
+which way the panel turns.
+
 ## The pen
 
 If your machine has a pen, it needs nothing of its own: the plugin binds the
@@ -279,7 +294,8 @@ position and scale are carried over, but anything else set on that output
 **A turned panel survives a config reload.** While the panel is turned, its
 rules are kept in Omarchy's toggles
 (`~/.local/state/omarchy/toggles/hypr/tablet-mode-rotation.lua`), which every
-reload loads after your files. The file is removed
+reload loads after your own files, though before any monitor tool that adds
+its rules at the end of `hyprland.lua`. The file is removed
 as soon as the panel stands upright, and does nothing while Omarchy holds the
 panel off or once the plugin is gone.
 
@@ -312,7 +328,9 @@ again and again to bring back a monitor that woke up black: the daemon keeps
 out of those modesets, and the panel no longer stands upside down until the
 monitor recovers. The daemon listens on Hyprland's event socket and,
 the moment a reload finishes, puts the rest back. Because it comes after every file, this also wins over
-tools whose monitor rules load late, such as hyprmoncfg. The orientation last
+tools whose monitor rules load late, such as hyprmoncfg. A reload on its own
+is answered at once; only a monitor plugged in or out makes the panel wait
+until the displays have been quiet for a moment. The orientation last
 applied on purpose is kept in `~/.local/state/omarchy/tablet-mode/`.
 
 **Settings are read from `shell.json`.** Omarchy stores a widget's settings on
