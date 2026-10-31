@@ -508,19 +508,123 @@ class PanelTurnsTest(CliTestCase):
         self.assertIn("eDP-1", body)
 
 
-class SettleTest(CliTestCase):
+class EventsTest(CliTestCase):
     def test_a_hotplug_waits_for_the_monitors_to_settle(self):
         for event in ("monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2"):
-            self.assertTrue(self.cli.settles(event, False), event)
+            self.assertEqual(self.cli.event_actions(event, False), {"settle", "sync"}, event)
 
-    def test_a_reload_on_its_own_turns_the_panel_back_at_once(self):
-        self.assertFalse(self.cli.settles("configreloaded", False))
+    def test_a_reload_on_its_own_rewires_checks_and_turns_the_panel_back_at_once(self):
+        self.assertEqual(self.cli.event_actions("configreloaded", False),
+                         {"rewire", "check", "sync"})
 
     def test_a_reload_during_a_hotplug_starts_the_wait_over(self):
-        self.assertTrue(self.cli.settles("configreloaded", True))
+        self.assertIn("settle", self.cli.event_actions("configreloaded", True))
 
-    def test_other_events_do_not_settle(self):
-        self.assertFalse(self.cli.settles("workspace", True))
+    def test_other_events_are_ignored(self):
+        self.assertEqual(self.cli.event_actions("workspace", True), set())
+
+
+class RotationPlanTest(CliTestCase):
+    edp = {"name": "eDP-1", "width": 1920, "height": 1200, "transform": 0, "disabled": False}
+    hdmi = {"name": "HDMI-A-1", "width": 2560, "height": 1440, "disabled": False}
+
+    def plan(self, target=0, panel=None, monitors=None, recovering=False, settling=False,
+             has_file=False, blocked=None):
+        panel = self.edp if panel is None else panel
+        monitors = [self.hdmi, panel] if monitors is None else monitors
+        return self.cli.rotation_plan(target, panel, monitors, recovering, settling,
+                                      has_file, blocked)
+
+    def test_a_panel_a_reload_turned_upside_down_is_turned_back_at_once(self):
+        self.assertEqual(self.plan(0, dict(self.edp, transform=2)), (True, 0, None))
+
+    def test_nothing_turns_while_the_monitors_settle(self):
+        self.assertEqual(self.plan(1, settling=True), (False, 0, None))
+
+    def test_without_a_target_or_a_panel_nothing_happens(self):
+        self.assertEqual(self.plan(None), (False, 0, None))
+        self.assertEqual(self.cli.rotation_plan(1, None, [], False, False, False, None),
+                         (False, 0, None))
+
+    def test_a_panel_that_is_off_stays_as_it_is(self):
+        self.assertEqual(self.plan(1, dict(self.edp, disabled=True)), (False, 0, None))
+
+    def test_a_black_display_records_the_turn_once_and_retries_in_seconds(self):
+        black = dict(self.hdmi, width=0, height=0)
+        first = self.plan(1, monitors=[black, self.edp])
+        self.assertEqual(first[:2], (True, self.cli.RETRY_SECONDS))
+        again = self.plan(1, monitors=[black, self.edp], blocked=first[2])
+        self.assertEqual(again[:2], (False, self.cli.RETRY_SECONDS))
+
+    def test_omarchy_checking_after_a_reload_holds_the_turn_only_a_moment(self):
+        # Omarchy's watcher takes its recovery lock on every reload to check.
+        first = self.plan(0, dict(self.edp, transform=2), recovering=True)
+        self.assertEqual(first[1], self.cli.CHECK_RETRY_SECONDS)
+        # The next reload holds it back for the same reason: still only a moment.
+        again = self.plan(0, dict(self.edp, transform=2), recovering=True, blocked=first[2])
+        self.assertEqual(again[:2], (False, self.cli.CHECK_RETRY_SECONDS))
+        self.assertLess(self.cli.CHECK_RETRY_SECONDS, 0.5)
+
+    def test_the_turn_goes_ahead_once_the_display_is_back(self):
+        self.assertEqual(self.plan(1, blocked=("HDMI-A-1 has no mode yet", 1)),
+                         (True, 0, None))
+
+    def test_a_turned_panel_without_its_rotation_file_gets_one(self):
+        self.assertEqual(self.plan(1, dict(self.edp, transform=1)), (True, 0, None))
+
+    def test_an_upright_panel_with_a_leftover_rotation_file_loses_it(self):
+        self.assertEqual(self.plan(0, has_file=True), (True, 0, None))
+
+    def test_a_panel_standing_right_is_left_alone(self):
+        self.assertEqual(self.plan(1, dict(self.edp, transform=1), has_file=True),
+                         (False, 0, None))
+
+
+class PanelPositionTest(CliTestCase):
+    # The laptop's panel, 1536x960 at scale 1.25, and a 2560x1440 monitor.
+    edp = {"name": "eDP-1", "width": 1920, "height": 1200, "scale": 1.25,
+           "x": 0, "y": 0, "transform": 0, "disabled": False}
+    ext = {"name": "HDMI-A-1", "width": 2560, "height": 1440, "scale": 1,
+           "transform": 0, "disabled": False}
+
+    def position(self, panel, transform, ext_at, home=None):
+        ext = dict(self.ext, x=ext_at[0], y=ext_at[1])
+        return self.cli.panel_position(panel, transform, [panel, ext], home)
+
+    def test_with_the_monitor_above_the_turned_panel_stays_where_it_is(self):
+        self.assertEqual(self.position(dict(self.edp, x=512, y=1440), 1, (0, 0)), "512x1440")
+
+    def test_a_monitor_below_is_not_covered_by_the_taller_turned_panel(self):
+        # Upright the panel ends at y=960; turned it would reach y=1536.
+        self.assertEqual(self.position(self.edp, 1, (0, 960)), "0x-576")
+
+    def test_a_monitor_beside_is_not_covered_by_the_wider_upright_panel(self):
+        portrait = dict(self.edp, transform=1)
+        self.assertEqual(self.position(portrait, 0, (960, 0), home=(0, 0)), "0x0")
+
+    def test_turning_back_upright_goes_home_after_moving_aside(self):
+        moved = dict(self.edp, x=0, y=-576, transform=1)
+        self.assertEqual(self.position(moved, 0, (0, 960), home=(0, 0)), "0x0")
+
+    def test_a_turn_to_180_keeps_the_position(self):
+        self.assertEqual(self.position(self.edp, 2, (0, 960)), "0x0")
+
+    def test_displays_already_on_top_of_each_other_upright_are_left_so(self):
+        self.assertEqual(self.position(self.edp, 1, (0, 0)), "0x0")
+
+    def test_alone_the_panel_never_moves(self):
+        self.assertEqual(self.cli.panel_position(self.edp, 3, [self.edp], None), "0x0")
+
+    def test_a_turned_panel_records_its_upright_home(self):
+        conf = {}
+        panel = dict(self.edp, refreshRate=60.0, x=100, y=200)
+        with mock.patch.object(self.cli, "hyprctl", return_value=[panel]), \
+                mock.patch.object(self.cli, "log"), \
+                mock.patch.object(self.cli, "refresh_conf",
+                                  side_effect=lambda u=None: (conf.update(u) or conf, False)), \
+                mock.patch.object(self.cli, "hypr_eval", return_value=True):
+            self.cli.apply_rotation(1)
+        self.assertEqual((conf["home"], conf["position"]), ("100x200", "100x200"))
 
 
 class InputTest(CliTestCase):

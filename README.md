@@ -289,7 +289,10 @@ $cli detect      # what it found on your machine — include this in issues
 
 **A rotated panel's monitor rule replaces the one in `monitors.lua`.** Mode,
 position and scale are carried over, but anything else set on that output
-(such as VRR) is not, while the panel is turned.
+(such as VRR) is not, while the panel is turned. Turned upright, the panel
+grows taller from its top-left corner; where that would cover another display,
+it moves to the nearest place beside it, and goes back where your layout has it
+once it stands upright again.
 
 **A turned panel survives a config reload.** While the panel is turned, its
 rules are kept in Omarchy's toggles
@@ -385,7 +388,9 @@ tests/run
 ```
 
 The suite works in a temporary `HOME` with `hyprctl` stubbed out, so it never
-touches the running compositor or your config.
+touches the running compositor or your config. What it cannot cover -- folding,
+the pen, monitors, sleep -- is in [`tests/MANUAL.md`](tests/MANUAL.md), a
+checklist to go through on a real 2-in-1 before a release.
 
 The icon, the illustrations and `preview.png` are drawn by `assets/make-art`;
 change the words or colors there and run it again. The preview is built around
