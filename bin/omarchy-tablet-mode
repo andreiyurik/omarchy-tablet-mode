@@ -59,6 +59,14 @@ OMARCHY_MODELESS_LOCK = os.path.join(
 # are still bringing the display up.
 SETTLE_SECONDS = 2.5
 
+# How soon to try again while a turn is held back. A display still without a
+# mode takes seconds to come back. Omarchy's watcher also takes its recovery
+# lock on every config reload just to check that none came up black, which
+# takes a moment: waiting as long for that would leave a panel a reload turned
+# upside down for seconds.
+RETRY_SECONDS = 3
+CHECK_RETRY_SECONDS = 0.25
+
 # How long the fold sensor must keep saying "folded" before the built-in
 # keyboard is switched off. A ThinkPad reports a fold for about a second on
 # opening the lid and on resume, and keys typed meanwhile -- a password at the
@@ -204,16 +212,51 @@ def rotation_blocker(monitors, recovering):
 HOTPLUG_EVENTS = ("monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2")
 
 
-def settles(event, settling):
-    """Whether a Hyprland event makes the panel wait for the monitors to settle.
+def event_actions(event, settling):
+    """What a Hyprland event asks of the daemon, as a set of:
 
-    A hotplug does. A config reload on its own does not: the displays keep
+    "rewire"  the reload took the switch binds down; bind again
+    "check"   look for config rules that turn the panel
+    "settle"  hold the turn until the monitors are quiet
+    "sync"    run a pass
+
+    A hotplug settles. A config reload on its own does not: the displays keep
     their modes, and a panel a late monitor rule has turned would stand
     upside down for the whole wait. A display a reload leaves without a mode
     still blocks the turn, and a reload in the middle of a hotplug -- Omarchy
     reloads to recover a display that came up black -- starts the wait over.
     """
-    return event in HOTPLUG_EVENTS or (event == "configreloaded" and settling)
+    if event in HOTPLUG_EVENTS:
+        return {"settle", "sync"}
+    if event == "configreloaded":
+        return {"rewire", "check", "sync"} | ({"settle"} if settling else set())
+    return set()
+
+
+def rotation_plan(target, panel, monitors, recovering, settling, has_file, blocked):
+    """What one pass does about the panel, as (apply, retry, blocked).
+
+    `apply` says to call apply_rotation(target) -- which, while a display is
+    still coming up, only records the turn for the next reload. `retry` is in
+    how many seconds to run another pass, or 0 for none. `blocked` is the
+    (reason, target) a turn was last held back for, so that recording happens
+    once per change.
+
+    Nothing happens without a target, without a panel, to a panel that is
+    off -- no sensor reading is worth waking it -- or while the monitors
+    settle. A panel already turned right still gets its rotation file put
+    right: one missing would let a reload straighten it, and one left over
+    would turn an upright panel.
+    """
+    if target is None or not panel or panel_off(panel) or settling:
+        return False, 0, blocked
+    if target != int(panel.get("transform", 0)):
+        blocker = rotation_blocker(monitors, recovering)
+        if blocker:
+            retry = RETRY_SECONDS if modeless(monitors) else CHECK_RETRY_SECONDS
+            return (blocker, target) != blocked, retry, (blocker, target)
+        return True, 0, None
+    return (target != 0) != has_file, 0, blocked
 
 
 def debounce_fold(reading, confirmed, since, now, hold=FOLD_CONFIRM_SECONDS):
@@ -380,16 +423,19 @@ def matches(name, names):
     return name in names or re.sub(r"-\d+$", "", name) in names
 
 
-def detect_panel():
+def detect_panel(monitors=None):
     """The built-in panel, enabled or not -- the match Omarchy's own
     omarchy-hyprland-monitor-laptop makes.
 
     Never any other output. With the lid shut and a display attached, Omarchy
     switches the panel off, and an external monitor left as the only one would
     otherwise be taken for it: bound to the touchscreen, and turned whenever
-    the laptop is moved.
+    the laptop is moved. Takes the monitors from a snapshot already read, or
+    asks the compositor.
     """
-    for monitor in hyprctl("monitors", "all") or []:
+    if monitors is None:
+        monitors = hyprctl("monitors", "all")
+    for monitor in monitors or []:
         if re.match(r"^(eDP|LVDS|DSI)-", monitor.get("name", "")):
             return monitor
     return None
@@ -615,7 +661,7 @@ def write_conf(conf):
     Plain key=value. Returns whether anything changed.
     """
     lines = ["# Written by omarchy-tablet-mode. Edited by hand, it will be overwritten."]
-    for key in ("panel", "mode", "position", "scale", "transform", "tablet_sysfs"):
+    for key in ("panel", "mode", "position", "home", "scale", "transform", "tablet_sysfs"):
         value = conf.get(key)
         if value is not None and value != "" and printable(str(value)):
             lines.append("%s=%s" % (key, value))
@@ -643,20 +689,26 @@ def refresh_conf(updates=None):
     return conf, write_conf(conf)
 
 
-def plugin_entry(plugin_id=PLUGIN_ID):
+def read_shell_json():
+    try:
+        with open(SHELL_JSON) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def plugin_entry(plugin_id=PLUGIN_ID, data=None):
     """A plugin's entry in shell.json, this one's by default, or None when
     that plugin is disabled.
 
     A third-party plugin is enabled exactly when its entry is there, and the
     entry carries the widget's settings inline. Reading them here means the
     daemon never depends on the widget passing them along -- which breaks
-    whenever the shell reloads one without the other.
+    whenever the shell reloads one without the other. `data` is shell.json
+    already read, for looking up several plugins with one read.
     """
-    try:
-        with open(SHELL_JSON) as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        return None
+    if data is None:
+        data = read_shell_json()
 
     def find(node):
         if isinstance(node, dict):
@@ -677,10 +729,11 @@ def plugin_enabled():
     return plugin_entry() is not None
 
 
-def find_keyboard():
+def find_keyboard(data=None):
     """The on-screen keyboard to use: the first known one that is enabled."""
+    data = read_shell_json() if data is None else data
     for keyboard in KEYBOARDS:
-        if plugin_entry(keyboard[0]) is not None:
+        if plugin_entry(keyboard[0], data) is not None:
             return keyboard
     return None
 
@@ -945,10 +998,18 @@ def apply_rotation(transform):
         log("not turning the panel: it has no mode yet")
         return 1
 
+    # Upright, where the panel stands is the user's layout, and is kept as its
+    # home to come back to.
+    monitors = hyprctl("monitors", "all")
+    if int(panel.get("transform", 0)) == 0:
+        home = (panel["x"], panel["y"])
+    else:
+        home = parse_position(read_conf().get("home"))
     conf, _ = refresh_conf({
         "panel": name,
         "mode": "%dx%d@%s" % (panel["width"], panel["height"], panel["refreshRate"]),
-        "position": "%dx%d" % (panel["x"], panel["y"]),
+        "position": panel_position(panel, transform, monitors, home),
+        "home": "%dx%d" % home if home else None,
         "scale": panel["scale"],
         "transform": transform,
     })
@@ -960,13 +1021,78 @@ def apply_rotation(transform):
     # While another display is still coming up, or Omarchy reloads to recover
     # one, a modeset of our own races theirs. The file is in place, so the
     # next reload turns the panel without one.
-    blocker = rotation_blocker(hyprctl("monitors", "all"), omarchy_recovering())
+    blocker = rotation_blocker(monitors, omarchy_recovering())
     if blocker:
         log("not turning the panel now (%s); the next config reload will" % blocker)
         return 1
     if not hypr_eval(statements):
         return 1
     return 0
+
+
+def logical_rect(monitor, transform=None, position=None):
+    """A monitor's area in the layout, as (x, y, width, height), turned to
+    `transform` and placed at `position` when given."""
+    transform = int(monitor.get("transform", 0)) if transform is None else transform
+    scale = float(monitor.get("scale") or 1)
+    width = int(round(monitor["width"] / scale))
+    height = int(round(monitor["height"] / scale))
+    if transform % 2:
+        width, height = height, width
+    x, y = position if position is not None else (monitor["x"], monitor["y"])
+    return x, y, width, height
+
+
+def overlaps(a, b):
+    return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+
+
+def clear_position(rect, others):
+    """Where a turned panel goes so it covers no other display.
+
+    Turned upright, a panel grows in height and shrinks in width from its
+    top-left corner, and a display below or beside it can end up under it:
+    two outputs on the same pixels, the cursor and windows lost between them.
+    Where it covers nothing, it stays put. Otherwise it moves to the nearest
+    place alongside one of the displays it would cover. Where there is none,
+    it stays put too, as Hyprland would have it.
+    """
+    x, y, width, height = rect
+    if not any(overlaps(rect, other) for other in others):
+        return x, y
+    candidates = []
+    for ox, oy, ow, oh in others:
+        candidates += [(ox - width, y), (ox + ow, y), (x, oy - height), (x, oy + oh)]
+    free = [(cx, cy) for cx, cy in candidates
+            if not any(overlaps((cx, cy, width, height), other) for other in others)]
+    if not free:
+        return x, y
+    return min(free, key=lambda p: (abs(p[0] - x) + abs(p[1] - y), p))
+
+
+def panel_position(panel, transform, monitors, home):
+    """Where the panel stands once turned to `transform`, as "XxY".
+
+    Upright it goes back to its home -- where it stood when last upright,
+    which is where the user's layout put it -- even if turning it moved it
+    aside. Turned, it starts from home too and keeps clear of the others --
+    but only of those it was clear of upright: a layout that puts displays
+    on top of each other, as mirroring does, is the user's to keep.
+    """
+    start = home or (panel["x"], panel["y"])
+    if transform % 2 == 0:
+        return "%dx%d" % start
+    upright = logical_rect(panel, 0, start)
+    others = [logical_rect(m) for m in monitors or []
+              if m.get("name") != panel.get("name") and not m.get("disabled")
+              and m.get("width") and m.get("height")]
+    others = [other for other in others if not overlaps(upright, other)]
+    return "%dx%d" % clear_position(logical_rect(panel, transform, start), others)
+
+
+def parse_position(value):
+    match = re.match(r"^(-?\d+)x(-?\d+)$", value or "")
+    return (int(match.group(1)), int(match.group(2))) if match else None
 
 
 def resolve_position(name, current):
@@ -982,9 +1108,9 @@ def resolve_position(name, current):
     return None
 
 
-def status(conf=None):
+def status(conf=None, monitors=None):
     conf = conf or read_conf()
-    transform = int((detect_panel() or {}).get("transform", 0))
+    transform = int((detect_panel(monitors) or {}).get("transform", 0))
     return {
         "transform": transform,
         "orientation": ORIENTATIONS[transform % 4],
@@ -992,7 +1118,7 @@ def status(conf=None):
         "folded": folded(conf),
         "hasFoldSensor": has_fold_sensor(conf),
         "sensorInstalled": sensor_proxy_installed(),
-        "keyboard": (find_keyboard() or (None, None))[1],
+        "keyboard": (find_keyboard(read_shell_json() or {}) or (None, None))[1],
     }
 
 
@@ -1092,8 +1218,8 @@ def run_daemon(mapping_override=None):
              "retry_timer": None, "reloaded": True, "turns": []}
     loop = GLib.MainLoop()
 
-    def emit():
-        data = status(conf)
+    def emit(monitors=None):
+        data = status(conf, monitors)
         data["sensor"] = state["proxy"] is not None
         print(json.dumps(data), flush=True)
 
@@ -1168,7 +1294,7 @@ def run_daemon(mapping_override=None):
             int(read_conf().get("transform") or 0),
         )
 
-        panel = detect_panel()
+        panel = detect_panel(monitors)
         if state["reloaded"]:
             state["reloaded"] = False
             turns = panel_turns(panel)
@@ -1178,29 +1304,17 @@ def run_daemon(mapping_override=None):
                 notify(headline, body)
             state["turns"] = turns
 
-        # A panel that is off stays off: no sensor reading is worth waking it.
         # While the monitors settle, the settle timer runs the next pass; while
         # a display is still without a mode, a retry does.
-        ready = (target is not None and panel and not panel_off(panel)
-                 and state["settle_timer"] is None)
-        if ready and target != int(panel.get("transform", 0)):
-            blocker = rotation_blocker(monitors, omarchy_recovering())
-            if blocker:
-                # Not live, but recorded: the reloads Omarchy makes to recover
-                # a display then bring the panel up turned. Once per change.
-                if (blocker, target) != state["blocked"]:
-                    apply_rotation(target)
-                state["blocked"] = (blocker, target)
-                later(3, "retry_timer")
-            else:
-                state["blocked"] = None
-                apply_rotation(target)
-        elif ready and (target != 0) != os.path.exists(ROTATION_FILE):
-            # Turned as it should be, but with no file to survive a reload --
-            # as after an upgrade from a version without one -- or upright
-            # with one left over.
+        apply, retry, state["blocked"] = rotation_plan(
+            target, panel, monitors, omarchy_recovering(),
+            state["settle_timer"] is not None, os.path.exists(ROTATION_FILE),
+            state["blocked"])
+        if apply:
             apply_rotation(target)
-        emit()
+        if retry:
+            later(retry, "retry_timer")
+        emit(monitors if not apply else None)
         return GLib.SOURCE_REMOVE
 
     def schedule(*_args):
@@ -1290,13 +1404,14 @@ def run_daemon(mapping_override=None):
                 line = None
             if line is None:
                 return  # the compositor is gone, and the shell with it
-            event = line.split(">>", 1)[0]
-            if event == "configreloaded":
+            actions = event_actions(line.split(">>", 1)[0], state["settle_timer"] is not None)
+            if "rewire" in actions:
                 state["wired"] = False
+            if "check" in actions:
                 state["reloaded"] = True
-            if settles(event, state["settle_timer"] is not None):
+            if "settle" in actions:
                 settle()
-            if event == "configreloaded" or event in HOTPLUG_EVENTS:
+            if "sync" in actions:
                 schedule()
             source.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
 
