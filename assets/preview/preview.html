@@ -1,0 +1,212 @@
+<!doctype html>
+<!-- Catalog preview. Render with:
+  chromium --headless --no-sandbox --hide-scrollbars --force-device-scale-factor=1 --window-size=1600,900 --virtual-time-budget=3000 --screenshot=preview.png file://$PWD/assets/preview/preview.html
+Needs JetBrainsMono Nerd Font installed. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: JB; font-weight: 400; src: local('JetBrainsMono Nerd Font'), local('JetBrainsMonoNerdFont-Regular'); }
+@font-face { font-family: JB; font-weight: 700; src: local('JetBrainsMono Nerd Font Bold'), local('JetBrainsMonoNerdFont-Bold'); }
+:root {
+  --bg: #1a1b26; --bg2: #13141c; --panel: #24283b; --edge: #2f3350;
+  --fg: #a9b1d6; --bright: #c0caf5; --dim: #565f89;
+  --blue: #7aa2f7; --green: #9ece6a; --red: #f7768e; --magenta: #bb9af7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1600px; height: 900px; overflow: hidden; background: var(--bg); }
+body { font-family: JB, monospace; color: var(--fg); position: relative; }
+
+.bg { position: absolute; inset: 0;
+  background:
+    radial-gradient(900px 700px at 1300px 460px, rgba(236, 84, 160, .30), transparent 70%),
+    radial-gradient(700px 500px at 1500px 900px, rgba(122, 90, 220, .30), transparent 70%),
+    radial-gradient(800px 600px at 0px 0px, rgba(122, 162, 247, .13), transparent 70%),
+    var(--bg); }
+.grid { position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(169, 177, 214, .13) 1.2px, transparent 1.4px);
+  background-size: 32px 32px; background-position: 16px 16px;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 62%);
+  mask-image: linear-gradient(90deg, #000 0%, transparent 62%); }
+
+/* text column */
+.eyebrow { position: absolute; left: 96px; top: 74px; font-size: 19px; letter-spacing: .22em;
+  color: var(--blue); text-transform: uppercase; font-weight: 700; }
+.eyebrow i { font-style: normal; color: var(--dim); }
+h1 { position: absolute; left: 90px; top: 100px; font-size: 96px; line-height: 1; font-weight: 700;
+  color: var(--bright); letter-spacing: -.045em; white-space: nowrap; }
+h1 .cur { display: inline-block; width: 42px; height: 82px; margin-left: 12px; background: var(--blue);
+  transform: translateY(12px); box-shadow: 0 0 40px rgba(122, 162, 247, .55); }
+.tag { position: absolute; left: 96px; top: 226px; font-size: 27px; color: var(--fg); letter-spacing: -.01em; }
+.tag b { color: var(--bright); font-weight: 700; }
+
+.rows { position: absolute; left: 96px; top: 296px; width: 640px; }
+.row { position: relative; padding-left: 50px; margin-bottom: 20px; }
+.row .no { font-size: 18px; color: #6f78a3; text-decoration: line-through; text-decoration-color: var(--red);
+  text-decoration-thickness: 2px; }
+.row .yes { font-size: 27px; color: var(--bright); font-weight: 700; margin-top: 4px; letter-spacing: -.02em; }
+.row .mark { position: absolute; left: 0; top: 3px; width: 32px; height: 32px; border-radius: 8px;
+  display: grid; place-items: center; font-size: 20px; font-weight: 700; color: #1a1b26; background: var(--green); }
+.row .mark.x { display: none; }
+
+/* fold strip */
+.strip { position: absolute; left: 0; top: 560px; width: 900px; height: 296px; }
+.strip .label { position: absolute; font-size: 15px; letter-spacing: .2em; font-weight: 700; color: var(--fg); white-space: nowrap; }
+.strip .label small { display: block; margin-top: 6px; font-size: 13px; letter-spacing: .12em; color: var(--dim); font-weight: 400; }
+.stage { position: absolute; width: 240px; height: 200px; perspective: 1000px; }
+.scene { position: absolute; left: 120px; top: 100px; width: 0; height: 0; transform-style: preserve-3d; }
+.arrow { position: absolute; top: 96px; font-size: 26px; color: var(--dim); }
+.strip .cap { position: absolute; left: 96px; top: 0; font-size: 14px; letter-spacing: .2em; color: var(--dim); font-weight: 700; }
+
+/* 3D pieces */
+.box { position: absolute; transform-style: preserve-3d; }
+.face { position: absolute; backface-visibility: hidden; }
+.metal { background: linear-gradient(160deg, #3b4261, #2a2f47 60%, #23273b); }
+.keys { background: #1c1e2e; position: absolute; inset: 0; padding: 7px 8px; display: flex; flex-direction: column; gap: 3px; }
+.keys .r { display: flex; gap: 3px; flex: 1; }
+.keys .k { flex: 1; border-radius: 1.5px; background: #3a4060; }
+.keys.off .k { background: #2a2e45; }
+.keys .pad { flex: 3.4; border-radius: 3px; margin: 3px 34% 0; background: #23273b; box-shadow: inset 0 0 0 1px #343a58; }
+.screen { position: absolute; inset: 0; background: #07080d; padding: 5px; }
+.screen div { width: 100%; height: 100%; border-radius: 2px; background: url(wall-land.jpg) center / cover; position: relative; }
+.screen div::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: rgba(26, 27, 38, .85); }
+
+.shadow { position: absolute; width: 200px; height: 70px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.55), transparent); }
+
+/* tablet */
+.tablet { position: absolute; left: 1010px; top: 46px; width: 506px; height: 808px; border-radius: 46px; padding: 13px;
+  background: linear-gradient(145deg, #3a3f5c, #14151f 40%, #0b0c12);
+  box-shadow: 0 0 0 1.5px #4a5078, 0 40px 90px rgba(0,0,0,.6), 0 0 140px rgba(236, 84, 160, .28); }
+.tablet .glass { width: 100%; height: 100%; border-radius: 34px; overflow: hidden; position: relative; background: #000; }
+.tablet .glass img { width: 100%; height: 100%; display: block; }
+.tablet .glass::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(115deg, rgba(255,255,255,.10) 0%, transparent 32%); }
+
+.callout { position: absolute; left: 776px; top: 190px; width: 376px; height: 270px;
+  box-shadow: 0 30px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(122,162,247,.4); }
+.callout img { display: block; width: 100%; height: 100%; }
+.tap { position: absolute; width: 74px; height: 74px; border-radius: 50%; left: 1060px; top: 330px;
+  border: 2px solid rgba(255,255,255,.8); background: radial-gradient(closest-side, rgba(255,255,255,.35), rgba(255,255,255,.0)); }
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+
+<div class="eyebrow">For 2-in-1 laptops <i>·</i> 360° hinge</div>
+<h1>Tablet Mode<span class="cur"></span></h1>
+<div class="tag">Fold it into a tablet. <b>Omarchy follows.</b></div>
+
+<div class="rows">
+  <div class="row"><div class="mark">✓</div>
+    <div class="no">screen stays sideways</div><div class="yes">Turns with you</div></div>
+  <div class="row"><div class="mark">✓</div>
+    <div class="no">taps land off to the side</div><div class="yes">Lands under your finger</div></div>
+  <div class="row"><div class="mark">✓</div>
+    <div class="no">keys type into the table</div><div class="yes">Keyboard switches off</div></div>
+</div>
+
+<div class="strip" id="strip"></div>
+
+<div class="tablet"><div class="glass"><img src="../shots/tablet-portrait.png"></div></div>
+<svg style="position:absolute;left:0;top:0" width="1600" height="900">
+  <path d="M1152 190 L1315 74 M1152 460 L1315 183" stroke="#7aa2f7" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="5 5" fill="none"/>
+  <rect x="1314" y="73" width="152" height="111" fill="none" stroke="#7aa2f7" stroke-width="1.5"/>
+</svg>
+<div class="callout"><img src="panel-crop.png"></div>
+
+<script>
+const W = 200, D = 128, T = 7;
+
+function box(w, h, d, faces) {
+  // box centred on its own origin; w along x, h along y, d along z
+  const b = document.createElement('div'); b.className = 'box';
+  b.style.cssText = `width:0;height:0;`;
+  const mk = (cls, fw, fh, tr, content) => {
+    const f = document.createElement('div'); f.className = 'face ' + cls;
+    f.style.cssText = `width:${fw}px;height:${fh}px;left:${-fw/2}px;top:${-fh/2}px;transform:${tr};`;
+    if (content) f.appendChild(content);
+    b.appendChild(f); return f;
+  };
+  // top: normal -y, image top at back (-z)
+  mk('metal', w, d, `rotateX(90deg) translateZ(${h/2}px)`, faces.top);
+  // bottom: normal +y, image top at front (+z)
+  mk('metal', w, d, `rotateX(-90deg) translateZ(${h/2}px)`, faces.bottom);
+  mk('metal', w, h, `translateZ(${d/2}px)`);
+  mk('metal', w, h, `rotateY(180deg) translateZ(${d/2}px)`);
+  mk('metal', d, h, `rotateY(90deg) translateZ(${w/2}px)`);
+  mk('metal', d, h, `rotateY(-90deg) translateZ(${w/2}px)`);
+  return b;
+}
+function keysEl(off) {
+  const k = document.createElement('div'); k.className = 'keys' + (off ? ' off' : '');
+  for (let r = 0; r < 4; r++) { const row = document.createElement('div'); row.className = 'r';
+    for (let i = 0; i < 13; i++) { const c = document.createElement('div'); c.className = 'k'; row.appendChild(c); }
+    k.appendChild(row); }
+  const p = document.createElement('div'); p.className = 'pad'; k.appendChild(p);
+  return k;
+}
+function screenEl(rot) {
+  const s = document.createElement('div'); s.className = 'screen';
+  s.appendChild(document.createElement('div'));
+  if (rot) s.style.transform = `rotate(${rot}deg)`;
+  return s;
+}
+// A half whose hinge edge sits on the origin and extends to z = D.
+function half(faces) {
+  const h = box(W, T, D, faces);
+  const wrap = document.createElement('div'); wrap.className = 'box'; wrap.style.cssText = 'width:0;height:0;';
+  h.style.transform = `translate(0px, ${T/2}px) translateZ(${D/2}px)`;
+  wrap.appendChild(h); return wrap;
+}
+function laptop(pose) {
+  const root = document.createElement('div'); root.className = 'box';
+  root.style.cssText = `width:0;height:0;transform:${pose.root};`;
+  if (pose.kind === 'tablet') {
+    const base = half({ top: null, bottom: keysEl(true) });
+    base.style.transform = `translateY(${T}px)`;
+    const lid = half({ top: screenEl(0), bottom: null });
+    root.appendChild(base); root.appendChild(lid);
+    return root;
+  }
+  const base = half({ top: keysEl(false), bottom: null });
+  const lidHinge = document.createElement('div'); lidHinge.className = 'box';
+  lidHinge.style.cssText = `width:0;height:0;transform:rotateX(${pose.theta}deg);`;
+  // lid lies above its hinge line: its screen is the bottom face
+  const lid = half({ top: null, bottom: screenEl(pose.kind === 'tent' ? 180 : 0) });
+  lid.style.transform = `translateY(${-T}px)`;
+  lidHinge.appendChild(lid);
+  base.appendChild(lidHinge);
+  // base's children share its (untransformed) frame; put lid hinge beside it
+  root.appendChild(base);
+  return root;
+}
+
+const view = 'rotateX(-24deg) rotateY(-34deg)';
+const poses = [
+  { kind: 'laptop', label: 'LAPTOP', sub: 'hinge 110°', root: 'translateY(46px) translateZ(-56px)', theta: 108 },
+  { kind: 'tent', label: 'TENT', sub: 'hinge 290°', root: 'rotateY(180deg) translateY(-26px) translateZ(-4px) rotateX(-56deg)', theta: 292 },
+  { kind: 'tablet', label: 'TABLET', sub: 'hinge 360°', root: 'translateY(40px) translateZ(-60px)' },
+];
+const strip = document.getElementById('strip');
+const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = 'ONE LAPTOP, THREE SHAPES'; strip.appendChild(cap);
+poses.forEach((p, i) => {
+  const x = 96 + i * 268;
+  const stage = document.createElement('div'); stage.className = 'stage';
+  stage.style.cssText = `left:${x - 4}px;top:44px;`;
+  const scene = document.createElement('div'); scene.className = 'scene';
+  scene.style.transform = view;
+  const sh = document.createElement('div'); sh.className = 'shadow';
+  sh.style.cssText = `left:-100px;top:${p.kind === 'tent' ? 40 : 36}px;transform:rotateX(90deg) translateZ(${p.kind==='tablet'?-2:0}px);`;
+  scene.appendChild(laptop(p));
+  stage.appendChild(scene);
+  strip.appendChild(stage);
+  const lab = document.createElement('div'); lab.className = 'label';
+  lab.style.cssText = `left:${x + 16}px;top:${262}px;width:200px;text-align:center;`;
+  lab.innerHTML = `${p.label}<small>${p.sub}</small>`;
+  strip.appendChild(lab);
+  if (i < 2) { const a = document.createElement('div'); a.className = 'arrow'; a.textContent = '→';
+    a.style.left = `${x + 246}px`; a.style.top = '120px'; strip.appendChild(a); }
+});
+</script>
+</body>
+</html>

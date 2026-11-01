@@ -392,11 +392,12 @@ touches the running compositor or your config. What it cannot cover -- folding,
 the pen, monitors, sleep -- is in [`tests/MANUAL.md`](tests/MANUAL.md), a
 checklist to go through on a real 2-in-1 before a release.
 
-The icon, the illustrations and `preview.png` are drawn by `assets/make-art`;
-change the words or colors there and run it again. The preview is built around
-`assets/shots/tablet-portrait.png`, a screenshot of the screen turned upright
-with the panel and an on-screen keyboard open, taken with the Tokyo Night
-theme. `assets/panel.png` is a screenshot of the panel.
+The icon and the illustrations are drawn by `assets/make-art`; change the words
+or colors there and run it again. `preview.png` is rendered from
+`assets/preview/preview.html` (the command is at the top of that file). It is
+built around `assets/shots/tablet-portrait.png`, a screenshot of the screen
+turned upright with the panel and an on-screen keyboard open, taken with the
+Tokyo Night theme. `assets/panel.png` is a screenshot of the panel.
 
 ## Uninstall
 
