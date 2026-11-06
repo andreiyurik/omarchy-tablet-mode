@@ -119,6 +119,7 @@ every position, since the plugin cannot tell laptop from tablet there.
 | Other ThinkPad Yoga (X1 Yoga, X13 Yoga, L13 Yoga) | `thinkpad_acpi` | Expected to work |
 | Lenovo Yoga 2-in-1 | `lenovo-ymc` or `intel-vbtn` | Expected to work |
 | HP Spectre x360, Envy x360, EliteBook x360 | `hp-wmi` or `intel-vbtn` | Expected to work |
+| HP EliteBook x360 (DMI: SBKPFV3) | `intel-hid` and `hp-wmi` | **Tested**: tent-mode rotation after preferring Intel HID when HP WMI remains 0 |
 | HP ENVY x360 13-ar | none reported | **Tested**: rotation, touch and pen. Not yet confirmed: the panel under a finger, suspend while folded. The fold is never reported, so the screen follows the sensor in every position. The keyboard and touchpad switch off in hardware when folded |
 | Dell XPS 13 2-in-1, Latitude and Inspiron 2-in-1 | `intel-vbtn` | Expected to work |
 | ASUS Zenbook Flip, Vivobook Flip | `asus-nb-wmi` | Expected to work |
@@ -347,7 +348,10 @@ being loaded together.
 needs no permissions. The daemon binds `switch:on` and `switch:off` for the
 device that has that switch, and the CLI switches input off or on at once. On
 ThinkPad, ASUS and HP machines the current state is also readable from sysfs,
-and there it wins: an event only says what changed.
+and there it normally wins: an event only says what changed. An exception is
+made for HP x360 systems exposing both `hp-wmi` and `Intel HID switches`:
+some report `hp-wmi/tablet=0` even in tent mode, so a current-session Intel
+switch event takes priority.
 
 Every tablet mode switch is bound, not just one — a ThinkPad has two. Some
 drivers, `intel-hid` among them, register their switch only on the first fold,
