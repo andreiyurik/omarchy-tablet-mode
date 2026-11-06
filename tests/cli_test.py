@@ -188,6 +188,48 @@ class FoldTest(CliTestCase):
         conf = {"tablet_sysfs": sysfs, "tablet_switch": ["Switch"]}
         self.assertIs(self.cli.folded(conf), False)
 
+    def test_hp_wmi_stuck_open_uses_intel_hid_tent_event(self):
+        conf = {"tablet_sysfs": "/sys/devices/platform/hp-wmi/tablet",
+                "tablet_switch": ["Intel HID switches"]}
+        with mock.patch.object(self.cli, "fold_event", return_value=True), \
+                mock.patch.object(self.cli, "read_text", return_value="0"):
+            self.assertIs(self.cli.folded(conf), True)
+        with mock.patch.object(self.cli, "fold_event", return_value=False), \
+                mock.patch.object(self.cli, "read_text", return_value="1"):
+            self.assertIs(self.cli.folded(conf), False)
+
+    def test_hp_wmi_with_intel_hid_and_no_event_uses_sysfs(self):
+        conf = {"tablet_sysfs": "/sys/devices/platform/hp-wmi/tablet",
+                "tablet_switch": ["Intel HID switches"]}
+        with mock.patch.object(self.cli, "fold_event", return_value=None), \
+                mock.patch.object(self.cli, "read_text", return_value="0"):
+            self.assertIs(self.cli.folded(conf), False)
+
+    def test_hp_wmi_without_intel_hid_keeps_sysfs_priority(self):
+        conf = {"tablet_sysfs": "/sys/devices/platform/hp-wmi/tablet",
+                "tablet_switch": ["HP WMI hotkeys"]}
+        with mock.patch.object(self.cli, "fold_event", return_value=True), \
+                mock.patch.object(self.cli, "read_text", return_value="0"):
+            self.assertIs(self.cli.folded(conf), False)
+
+    def test_hp_intel_hid_confirmed_tent_ignores_stale_hp_wmi(self):
+        conf = {"tablet_sysfs": "/sys/devices/platform/hp-wmi/tablet",
+                "tablet_switch": ["Intel HID switches"]}
+        with mock.patch.object(self.cli, "read_conf", return_value=conf), \
+                mock.patch.object(self.cli, "fold_event", return_value=True), \
+                mock.patch.object(self.cli, "read_text", return_value="0"), \
+                mock.patch.object(self.cli, "hyprctl", return_value=[]):
+            self.assertTrue(self.cli.fold_still_held())
+
+    def test_hp_wmi_without_intel_hid_still_prevents_unsafe_input_disable(self):
+        conf = {"tablet_sysfs": "/sys/devices/platform/hp-wmi/tablet",
+                "tablet_switch": ["HP WMI hotkeys"]}
+        with mock.patch.object(self.cli, "read_conf", return_value=conf), \
+                mock.patch.object(self.cli, "fold_event", return_value=True), \
+                mock.patch.object(self.cli, "read_text", return_value="0"), \
+                mock.patch.object(self.cli, "hyprctl", return_value=[]):
+            self.assertFalse(self.cli.fold_still_held())
+
     def test_switch_event_from_this_session_counts(self):
         self.write(self.cli.FOLD_FILE, "sig-now 1\n")
         self.assertIs(self.cli.folded({"tablet_switch": ["Switch"]}), True)
