@@ -834,15 +834,32 @@ def has_fold_sensor(conf):
                 or fold_event() is not None)
 
 
+def hp_wmi_needs_intel_hid_fold(conf):
+    """The HP WMI tablet flag may remain 0 when Intel HID reports tent mode.
+
+    Only prefer the switch event on machines exposing both interfaces. Other
+    machines retain the normal sysfs-first behavior.
+    """
+    return (conf.get("tablet_sysfs") == "/sys/devices/platform/hp-wmi/tablet"
+            and "Intel HID switches" in conf.get("tablet_switch", []))
+
+
 def folded(conf=None):
     """True or False, or None when nothing has reported the fold.
 
-    A sysfs state wins: it says where things stand, where an event only says
-    what changed. A machine with a switch but no event yet starts out open.
+    A sysfs state normally wins: it says where things stand, where an event
+    only says what changed. HP x360 machines with an Intel HID switch can
+    report a stale HP WMI state, so their current-session event takes priority.
+    A machine with a switch but no event yet starts out open.
     With nothing at all, the fold is unknown, and the screen follows the
     sensor rather than stay put on a machine that never says it folded.
     """
     conf = conf or read_conf()
+
+    if hp_wmi_needs_intel_hid_fold(conf):
+        event = fold_event()
+        if event is not None:
+            return event
 
     sysfs = conf.get("tablet_sysfs")
     if sysfs:
@@ -1550,8 +1567,9 @@ def fold_still_held():
     """
     if fold_event() is not True:
         return False
-    sysfs = read_conf().get("tablet_sysfs")
-    if sysfs:
+    conf = read_conf()
+    sysfs = conf.get("tablet_sysfs")
+    if sysfs and not hp_wmi_needs_intel_hid_fold(conf):
         value = read_text(sysfs)
         if value is not None and value != "1":
             return False
